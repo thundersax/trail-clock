@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Trail Cutoff Clock</title>
+<meta name="theme-color" content="#111613">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Cutoff">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>Trail Cutoff Clock</h1>
+    <span class="clock" id="clock">--:--:--</span>
+  </div>
+
+  <div class="banner" id="banner" role="status" hidden>
+    <span id="bannerText"></span>
+    <button class="bx" id="bannerX" aria-label="ปิดแจ้งเตือน">×</button>
+  </div>
+
+  <section class="panel">
+    <div class="count-label">
+      <span class="label" id="cLabel">รอปล่อยตัว</span>
+      <span class="label mono" id="cDeadline"></span>
+    </div>
+    <div class="count" id="count">--:--:--</div>
+    <div class="stats">
+      <div class="stat"><span class="label">เวลาวิ่งแล้ว</span><b id="sElapsed">0:00:00</b></div>
+      <div class="stat"><span class="label">ระยะ</span><b id="sKm">0.0 กม.</b></div>
+      <div class="stat"><span class="label">ความชันตอนนี้</span><b id="sGrade">-</b></div>
+      <div class="stat"><span class="label">เพซที่ต้องใช้</span><b id="sReq">-</b></div>
+      <div class="stat"><span class="label">เหลือเผื่อ</span><b id="sBuf">-</b></div>
+    </div>
+    <div class="hillline" id="hillLine"></div>
+    <div class="hillline off" id="offLine" role="alert" hidden></div>
+    <div class="hillline grp" id="grpLine" hidden></div>
+    <div class="row">
+      <button class="btn primary" id="startBtn">สตาร์ท</button>
+      <button class="btn" id="wakeBtn" aria-pressed="false">เปิดจอค้าง</button>
+    </div>
+    <p class="note" id="startNote"></p>
+  </section>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="t-map" aria-selected="true">แผนที่</button>
+    <button role="tab" id="t-hill" aria-selected="false">ทางชัน</button>
+    <button role="tab" id="t-cut" aria-selected="false">Cutoff</button>
+    <button role="tab" id="t-grp" aria-selected="false">กลุ่ม</button>
+    <button role="tab" id="t-set" aria-selected="false">ตั้งค่า</button>
+  </div>
+
+  <!-- แผนที่ -->
+  <div class="pane" id="p-map">
+    <div class="mapbox" id="mapbox">
+      <canvas id="map" aria-label="แผนที่เส้นทาง"></canvas>
+      <canvas id="glc" hidden></canvas>
+      <canvas id="map3d" hidden aria-label="แผนที่ 3 มิติ"></canvas>
+      <div class="mapmodes" role="group" aria-label="โหมดแผนที่">
+        <button class="mm" id="mRoad" aria-pressed="true">แผนที่</button>
+        <button class="mm" id="mSat" aria-pressed="false">ดาวเทียม</button>
+        <button class="mm" id="m3d" aria-pressed="false">3D</button>
+      </div>
+      <div class="maphud mono" id="mapHud" hidden></div>
+      <div class="mapctl3d" id="ctl3d" hidden>
+        <button class="mc" id="r3N" aria-label="หันทิศเหนือขึ้น">▲</button>
+        <button class="mc" id="r3L" aria-label="หมุนซ้าย">⟲</button>
+        <button class="mc" id="r3R" aria-label="หมุนขวา">⟳</button>
+        <button class="mc" id="r3U" aria-label="มองจากด้านบนมากขึ้น">⤒</button>
+        <button class="mc" id="r3D" aria-label="เอียงให้ต่ำลง">⤓</button>
+        <button class="mc wide" id="r3M" aria-label="สลับการลากเป็นหมุนหรือเลื่อน" aria-pressed="false">ลาก:เลื่อน</button>
+        <button class="mc wide" id="r3E" aria-label="ขยายความสูง">สูง×3</button>
+      </div>
+      <div class="mapctl">
+        <button class="mc" id="zIn" aria-label="ซูมเข้า">+</button>
+        <button class="mc" id="zOut" aria-label="ซูมออก">−</button>
+        <button class="mc" id="zFit" aria-label="ดูทั้งเส้นทาง">⤢</button>
+        <button class="mc" id="zFollow" aria-label="ตามตำแหน่ง" aria-pressed="false">◎</button>
+        <button class="mc" id="zFull" aria-label="เต็มจอ">⛶</button>
+      </div>
+    </div>
+    <div class="canvas-box"><canvas id="prof" class="cv-prof"></canvas></div>
+    <div class="kv">
+      <div class="stat"><span class="label">ระยะรวม</span><b class="mono" id="gTotal">-</b></div>
+      <div class="stat"><span class="label">ขึ้นสะสม</span><b class="mono" id="gGain">-</b></div>
+      <div class="stat"><span class="label">สูงสุด</span><b class="mono" id="gMax">-</b></div>
+    </div>
+    <p class="note" id="mapNote"></p>
+  </div>
+
+  <!-- ทางชัน -->
+  <div class="pane" id="p-hill" hidden>
+    <div class="scrub mono" id="scrub">แตะหรือลากบนกราฟเพื่อดูความชัน</div>
+    <div class="canvas-box"><canvas id="prof2" class="cv-prof tall"></canvas><button class="pfbtn" id="pFullBtn" aria-label="กราฟเต็มจอ">⤢ เต็มจอ</button></div>
+    <div class="legend" id="legend"></div>
+    <div class="row">
+      <button class="btn" id="fUp" aria-pressed="true">ทางขึ้น</button>
+      <button class="btn" id="fAll" aria-pressed="false">ขึ้นและลง</button>
+    </div>
+    <div class="htable" id="hills"></div>
+    <p class="note" id="hillNote"></p>
+  </div>
+
+  <!-- Cutoff -->
+  <div class="pane" id="p-cut" hidden>
+    <div class="field">
+      <label class="label" for="planStart">เวลาปล่อยตัวตามโปรแกรม</label>
+      <input type="time" id="planStart" value="03:30" style="max-width:160px">
+    </div>
+    <div class="tbl"><table>
+      <thead><tr><th>จุด</th><th>กม.</th><th>Cutoff</th><th>เหลือ</th><th>สถานะ</th><th></th></tr></thead>
+      <tbody id="cpBody"></tbody>
+    </table></div>
+    <div class="row"><button class="btn" id="addCp">เพิ่มจุด</button></div>
+    <p class="note">เวลา Cutoff เป็นนาฬิกาจริง ตอนกดสตาร์ท ระบบจะนับจากเวลาที่กดจริง โดยคงช่วงห่างจากเวลาปล่อยตัวไว้เหมือนเดิม</p>
+  </div>
+
+  <!-- กลุ่ม -->
+  <div class="pane" id="p-grp" hidden>
+    <section class="panel">
+      <span class="label">กลุ่มวิ่ง · เห็นตำแหน่งเพื่อนแบบสด ไม่ต้องล็อกอิน</span>
+      <div class="grid3">
+        <div class="field"><label class="label" for="gName">ชื่อของคุณ</label><input type="text" id="gName" maxlength="24" autocomplete="off" placeholder="เช่น แบงค์"></div>
+        <div class="field"><label class="label" for="gRoom">รหัสกลุ่ม</label><input type="text" id="gRoom" maxlength="12" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="เช่น TNT100"></div>
+      </div>
+      <div class="row">
+        <button class="btn primary" id="gJoin">เข้าร่วมกลุ่ม</button>
+        <button class="btn" id="gNew">สร้างรหัสใหม่</button>
+        <button class="btn" id="gCopy">คัดลอกลิงก์เชิญ</button>
+        <button class="btn danger" id="gLeave" hidden>ออกจากกลุ่ม</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="gShare" checked> แชร์ตำแหน่งของฉันให้คนในกลุ่ม</label>
+      <div class="msg" id="gMsg"></div>
+      <p class="note">ใครมีรหัสกลุ่มก็เห็นตำแหน่งของคนในกลุ่มได้ ส่งรหัสเฉพาะคนที่ไว้ใจ ทุกคนต้องใช้ไฟล์ GPX เดียวกัน และเปิด GPS ที่แท็บตั้งค่า ตำแหน่งส่งผ่านอินเทอร์เน็ต ถ้าไม่มีสัญญาณ เพื่อนจะเห็นตำแหน่งล่าสุดและเวลาที่เห็นล่าสุด พอสัญญาณกลับมาแอปส่งตำแหน่งปัจจุบันให้เอง</p>
+    </section>
+    <div class="glist" id="gList"></div>
+    <details class="panel">
+      <summary>ตั้งค่า Firebase (ทำครั้งเดียวต่อกลุ่มเพื่อน)</summary>
+      <div class="field"><label class="label" for="fbUrl">ที่อยู่ฐานข้อมูล (Realtime Database URL)</label>
+        <input type="text" id="fbUrl" placeholder="https://ชื่อโปรเจกต์-default-rtdb.asia-southeast1.firebasedatabase.app" autocapitalize="off" autocomplete="off" spellcheck="false"></div>
+      <p class="note">1) สร้างโปรเจกต์ที่ console.firebase.google.com (แผนฟรี) 2) เมนู Build แล้วเลือก Realtime Database กด Create Database 3) แท็บ Rules วางกฎด้านล่างแล้วกด Publish 4) คัดลอกที่อยู่ฐานข้อมูลมาใส่ช่องด้านบน หรือใส่ในไฟล์ config.js ให้เพื่อนใช้ร่วมกัน</p>
+      <textarea class="gout" id="fbRules" rows="12" readonly></textarea>
+      <div class="row"><button class="btn" id="fbCopy">คัดลอกกฎ (rules)</button></div>
+    </details>
+  </div>
+
+  <!-- ตั้งค่า -->
+  <div class="pane" id="p-set" hidden>
+    <section class="panel">
+      <span class="label">เส้นทาง GPX</span>
+      <div class="field">
+        <label for="file" class="note">เลือกไฟล์ .gpx จากเครื่อง</label>
+        <input type="file" id="file" accept=".gpx,application/gpx+xml,text/xml,application/xml">
+        <div class="msg" id="gpxMsg"></div>
+      </div>
+      <div class="row">
+        <button class="btn" id="sampleBtn">ใช้เส้นทางตัวอย่าง</button>
+        <button class="btn danger" id="clearBtn">ล้างเส้นทางที่บันทึกไว้</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <span class="label">แจ้งเตือนทางขึ้นและช่วงชัน</span>
+      <label class="chk"><input type="checkbox" id="aOn" checked> เปิดการแจ้งเตือน</label>
+      <label class="chk"><input type="checkbox" id="aVib" checked> สั่น (Android)</label>
+      <label class="chk"><input type="checkbox" id="aSnd" checked> เสียงบี๊บ</label>
+      <label class="chk"><input type="checkbox" id="aOff" checked> เตือนเมื่อออกนอกเส้นทาง</label>
+      <div class="grid3">
+        <div class="field"><label class="label" for="aOffD">ออกนอกเส้นเมื่อห่าง (ม.)</label><input type="number" id="aOffD" min="20" max="500" step="10" value="50"></div>
+        <div class="field"><label class="label" for="aLead">เตือนล่วงหน้า (ม.)</label><input type="number" id="aLead" min="50" max="2000" step="50" value="300"></div>
+        <div class="field"><label class="label" for="aGain">ทางขึ้นสูงอย่างน้อย (ม.)</label><input type="number" id="aGain" min="5" max="500" step="5" value="30"></div>
+        <div class="field"><label class="label" for="aSteep">ช่วงชันตั้งแต่ (%)</label><input type="number" id="aSteep" min="5" max="40" step="1" value="12"></div>
+      </div>
+      <div class="row">
+        <button class="btn" id="aTest">ทดสอบแจ้งเตือน</button>
+        <button class="btn" id="aNotif">เปิดแจ้งเตือนของระบบ</button>
+      </div>
+      <p class="note" id="aNote">แจ้งเตือนจะดังเมื่อวิ่งเข้าใกล้ทางขึ้นหรือช่วงชัน ต้องเปิดแอปค้างไว้ iPhone ไม่รองรับการสั่นจากเว็บ</p>
+    </section>
+
+    <section class="panel">
+      <span class="label">ตำแหน่งของคุณ</span>
+      <div class="row">
+        <button class="btn" id="gpsBtn" aria-pressed="false">ใช้ GPS</button>
+        <span class="msg" id="gpsMsg">ยังไม่เปิด</span>
+      </div>
+      <div class="field">
+        <label class="label" for="simKm">ทดลอง: เลื่อนตำแหน่ง <span class="mono" id="simKmV">0.0</span> กม.</label>
+        <input type="range" id="simKm" min="0" max="50" step="0.1" value="0">
+      </div>
+      <div class="field">
+        <label class="label" for="shift">ทดลอง: ข้ามเวลาไปข้างหน้า <span class="mono" id="shiftV">0.0</span> ชม.</label>
+        <input type="range" id="shift" min="0" max="14" step="0.25" value="0">
+      </div>
+      <p class="note">ตัวเลื่อนใช้ลองดูหน้าจอตอนวิ่ง เมื่อ GPS จับสัญญาณได้ ค่า GPS จะมาก่อน</p>
+      <div class="row"><button class="btn" id="trClear">ล้างรอยทางที่เดิน</button><button class="btn danger" id="resetBtn">รีเซ็ตการสตาร์ท</button></div>
+    </section>
+
+    <section class="panel">
+      <span class="label">แผนที่ออฟไลน์</span>
+      <div class="field"><label class="label" for="tUrl">ลิงก์ไทล์แผนที่ (เว้นว่าง = OpenStreetMap)</label>
+        <input type="text" id="tUrl" placeholder="https://.../{z}/{x}/{y}.png" autocapitalize="off" autocomplete="off" spellcheck="false"></div>
+      <div class="field"><label class="label" for="tAttr">ข้อความให้เครดิตแผนที่</label>
+        <input type="text" id="tAttr" placeholder="© OpenStreetMap contributors"></div>
+      <div class="field"><label class="label" for="sUrl">ลิงก์ภาพดาวเทียม (เว้นว่าง = Esri World Imagery)</label>
+        <input type="text" id="sUrl" placeholder="https://.../{z}/{y}/{x}" autocapitalize="off" autocomplete="off" spellcheck="false"></div>
+      <div class="field"><label class="label" for="sAttr">เครดิตภาพดาวเทียม (ใช้เมื่อใส่ลิงก์เอง)</label>
+        <input type="text" id="sAttr"></div>
+      <div class="field"><label class="label" for="dUrl">ลิงก์ข้อมูลความสูง 3D แบบ Terrarium (เว้นว่าง = AWS Terrain Tiles)</label>
+        <input type="text" id="dUrl" placeholder="https://.../{z}/{x}/{y}.png" autocapitalize="off" autocomplete="off" spellcheck="false"></div>
+      <div class="grid3">
+        <div class="field"><label class="label" for="tZ">ซูมสูงสุดที่โหลด</label>
+          <select id="tZ"><option>14</option><option selected>15</option><option>16</option></select></div>
+        <div class="stat"><span class="label">ไทล์ที่ต้องโหลด</span><b class="mono" id="tCount">-</b></div>
+        <div class="stat"><span class="label">เก็บในเครื่องแล้ว</span><b class="mono" id="tHave">-</b></div>
+      </div>
+      <div class="row">
+        <button class="btn" id="tGo">โหลดแผนที่ตามเส้นทาง</button>
+        <button class="btn" id="tDem">โหลดข้อมูลความสูง 3D ล่วงหน้า</button>
+        <button class="btn danger" id="tClear">ล้างแผนที่ในเครื่อง</button>
+      </div>
+      <div class="msg" id="tMsg"></div>
+      <p class="note">แผนที่ที่คุณเลื่อนดูจะถูกเก็บในเครื่องอัตโนมัติ ปุ่มโหลดตามเส้นทางใช้ได้เมื่อใส่ลิงก์ไทล์ของผู้ให้บริการที่อนุญาตให้ดาวน์โหลดล่วงหน้า (เช่นแบบที่มี API key ของตัวเอง) เซิร์ฟเวอร์ OpenStreetMap ห้ามโหลดจำนวนมาก</p>
+    </section>
+
+    <section class="panel">
+      <span class="label">ติดตั้งลงหน้าโฮม</span>
+      <div class="row"><button class="btn" id="installBtn" hidden>ติดตั้งแอป</button></div>
+      <p class="note" id="installNote">iPhone: เปิดด้วย Safari กด Share แล้วเลือก "เพิ่มไปยังหน้าจอโฮม" Android: Chrome กดเมนู ⋮ แล้วเลือก "ติดตั้งแอป" หลังติดตั้งแล้วเปิดครั้งแรกตอนมีเน็ต จากนั้นใช้ออฟไลน์ได้</p>
+      <p class="msg" id="swMsg"></p>
+    </section>
+  </div>
+</div>
+<div id="pfull" class="pfull" hidden role="dialog" aria-label="กราฟความชันเต็มจอ">
+  <div class="pfbar">
+    <div class="mono pfinfo" id="pfInfo"></div>
+    <button class="btn" id="pfOut" aria-label="ซูมออก">−</button><button class="btn" id="pfIn" aria-label="ซูมเข้า">+</button>
+    <button class="btn" id="pfReset">ทั้งหมด</button><button class="btn primary" id="pfClose">ปิด</button>
+  </div>
+  <canvas id="prof3"></canvas>
+</div>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

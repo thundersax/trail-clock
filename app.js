@@ -19,8 +19,8 @@ var cps=[
   {name:"เส้นชัย",km:54,time:"17:30"}
 ];
 var planStart="03:30",startTs=null,simKm=0,shiftH=0,gpsKm=null,gpsWatch=null;
-var S={alertOn:true,vib:true,snd:true,lead:300,minGain:30,steep:12,offOn:true,offDist:50,tileUrl:"",tileAttr:"",base:"road",satUrl:"",satAttr:"",demUrl:"",ex:3,gName:"",gRoom:"",gOn:false,gShare:true,fbUrl:""};
-var gpsFix=null,trail=[],offRoute=false,offFixes=0,reloc=null,lastOffAlert=0,trailSaved=0;
+var S={alertOn:true,vib:true,snd:true,lead:300,minGain:30,steep:12,offOn:true,offDist:50,tileUrl:"",tileAttr:"",base:"road",satUrl:"",satAttr:"",demUrl:"",ex:3,gName:"",gRoom:"",gOn:false,gShare:true,fbUrl:"",gView:false};
+var ownPlan=null,gpsFix=null,trail=[],offRoute=false,offFixes=0,reloc=null,lastOffAlert=0,trailSaved=0;
 var events=[],climbs=[],lastKm=null,selSeg=null,scrubKm=null,hillFilter="up",follow=false;
 
 function load(){
@@ -33,7 +33,7 @@ function load(){
   var r=LS.get("tcc.route");
   if(r){try{route=build(JSON.parse(r))}catch(e){route=null}}
 }
-function save(){LS.set("tcc.state",JSON.stringify({cps:cps,planStart:planStart,startTs:startTs,simKm:simKm,shiftH:shiftH,S:S}))}
+function save(){LS.set("tcc.state",JSON.stringify({cps:(ownPlan?ownPlan.cps:cps),planStart:(ownPlan?ownPlan.ps:planStart),startTs:startTs,simKm:simKm,shiftH:shiftH,S:S}))}
 
 /* ================= helpers ================= */
 function pad(n){return n<10?"0"+n:""+n}
@@ -172,7 +172,7 @@ var pv={a:0,b:1};
 function drawProfile(cv,tall){
   var s=setup(cv),c=s.c,W=s.w,H=s.h;c.clearRect(0,0,W,H);
   if(!route){c.fillStyle=css("--muted");c.font="14px "+css("--font");c.textAlign="center";c.fillText("ยังไม่มีเส้นทาง",W/2,H/2);return}
-  var fz=cv.id==="prof3",L=tall?42:34,R=10,T=tall?22:16,B=22,pw=W-L-R,tot=route.total,mn=1e9,mx=-1e9,i,va=0,vb=tot;
+  var fz=cv.id==="prof3"||cv.id==="prof2",L=tall?42:34,R=10,T=tall?22:16,B=22,pw=W-L-R,tot=route.total,mn=1e9,mx=-1e9,i,va=0,vb=tot;
   if(fz){va=pv.a*tot;vb=pv.b*tot}
   var i0=Math.max(0,Math.floor(va/route.step)),i1=Math.min(route.n,Math.ceil(vb/route.step));
   for(i=i0;i<=i1;i++){var e=route.se[i];if(e<mn)mn=e;if(e>mx)mx=e}
@@ -706,47 +706,56 @@ function renderHills(){
 function filterBtns(){$("fUp").setAttribute("aria-pressed",hillFilter==="up");$("fAll").setAttribute("aria-pressed",hillFilter==="all")}
 $("fUp").onclick=function(){hillFilter="up";filterBtns();renderHills()};
 $("fAll").onclick=function(){hillFilter="all";filterBtns();renderHills()};
-(function scrubInput(){
-  var cv=$("prof2");
-  function at(e){if(!route)return;var r=cv.getBoundingClientRect(),L=42,R=10,x=clamp((e.clientX-r.left-L)/(r.width-L-R),0,1),km=x*route.total/1000,i=idxAt(km);
-    scrubKm=km;$("scrub").textContent="กม. "+km.toFixed(2)+" · สูง "+Math.round(route.se[i])+" ม. · ความชัน "+sgn(route.grade[i],1)+"%";drawProfile(cv,true)}
-  cv.addEventListener("pointerdown",function(e){try{cv.setPointerCapture(e.pointerId)}catch(x){}at(e)});
-  cv.addEventListener("pointermove",function(e){if(e.buttons||e.pointerType==="touch")at(e)});
-})();
-
-/* ===== กราฟเต็มจอ + ซูม ===== */
+/* ===== กราฟทางชัน: ซูม เลื่อน (แถบเลื่อน) เต็มจอ ===== */
 (function(){
-  var ov=$("pfull"),cv=$("prof3"),ptr={},pinch=null,drag=null,L=42,R=10;
+  var ov=$("pfull"),L=42,R=10,c2=$("prof2"),c3=$("prof3");
   function span(){return pv.b-pv.a}
-  function setView(a,b){var w=clamp(b-a,0.01,1);if(a<0){a=0}if(a+w>1)a=1-w;pv.a=a;pv.b=a+w;draw()}
-  function draw(){drawProfile(cv,true)}
-  function fracAt(cx){var r=cv.getBoundingClientRect();return pv.a+clamp((cx-r.left-L)/(r.width-L-R),0,1)*span()}
+  function sbUpd(){["sb2","sb3"].forEach(function(id){var sb=$(id),t=sb.firstChild;t.style.left=(pv.a*100)+"%";t.style.width=(span()*100)+"%";sb.classList.toggle("off",span()>=0.999)})}
+  function redraw(){if(!$("p-hill").hidden)drawProfile(c2,true);if(!ov.hidden)drawProfile(c3,true);sbUpd()}
+  function setView(a,b){var w=clamp(b-a,0.01,1);a=clamp(a,0,1-w);pv.a=a;pv.b=a+w;redraw()}
   function zoomAt(f,k){var w=clamp(span()*k,0.01,1),rel=(f-pv.a)/span();setView(f-rel*w,f-rel*w+w)}
-  function scrubAt(cx){if(!route)return;var km=fracAt(cx)*route.total/1000,i=idxAt(km);scrubKm=km;
-    $("pfInfo").textContent="กม. "+km.toFixed(2)+" · สูง "+Math.round(route.se[i])+" ม. · ชัน "+sgn(route.grade[i],1)+"%";draw()}
-  function open(){ov.hidden=false;pv.a=0;pv.b=1;document.body.style.overflow="hidden";$("pfInfo").textContent="แตะ/ลากเพื่อดูความชัน · บีบ 2 นิ้วเพื่อซูม";setTimeout(draw,30)}
-  function close(){ov.hidden=true;document.body.style.overflow="";drawCharts()}
+  function scrubTxt(){if(!route||scrubKm==null)return;var i=idxAt(scrubKm),t="กม. "+scrubKm.toFixed(2)+" · สูง "+Math.round(route.se[i])+" ม. · ชัน "+sgn(route.grade[i],1)+"%";$("scrub").textContent=t;$("pfInfo").textContent=t}
+  function attach(cv,full){
+    var ptr={},pinch=null,drag=null;
+    function rect(){return cv.getBoundingClientRect()}
+    function fracAt(cx){var r=rect();return pv.a+clamp((cx-r.left-L)/(r.width-L-R),0,1)*span()}
+    function scrubAt(cx){if(!route)return;scrubKm=fracAt(cx)*route.total/1000;scrubTxt();redraw()}
+    function pts(){return Object.keys(ptr).map(function(k){return ptr[k]})}
+    cv.addEventListener("wheel",function(e){if(!full&&!e.ctrlKey)return;e.preventDefault();zoomAt(fracAt(e.clientX),e.deltaY<0?.8:1.25)},{passive:false});
+    cv.addEventListener("pointerdown",function(e){try{cv.setPointerCapture(e.pointerId)}catch(x){}
+      ptr[e.pointerId]={x:e.clientX,y:e.clientY,x0:e.clientX};var p=pts();
+      if(p.length===2){pinch={d:Math.abs(p[0].x-p[1].x)||1,mid:(p[0].x+p[1].x)/2,a:pv.a,b:pv.b};drag=null}
+      else if(span()<0.999){drag={x:e.clientX,a:pv.a,moved:false}}
+      else scrubAt(e.clientX)});
+    cv.addEventListener("pointermove",function(e){
+      if(!ptr[e.pointerId]){if(e.pointerType==="mouse")scrubAt(e.clientX);return}
+      ptr[e.pointerId].x=e.clientX;var p=pts(),r=rect(),pw=r.width-L-R;
+      if(pinch&&p.length>=2){var d=Math.abs(p[0].x-p[1].x)||1,mid=(p[0].x+p[1].x)/2,w0=pinch.b-pinch.a,w=clamp(w0*pinch.d/d,0.01,1),
+        f0=pinch.a+clamp((pinch.mid-r.left-L)/pw,0,1)*w0,rel=clamp((mid-r.left-L)/pw,0,1);setView(f0-rel*w,f0-rel*w+w)}
+      else if(drag){if(Math.abs(e.clientX-drag.x)>5)drag.moved=true;if(drag.moved){var w2=span(),a=drag.a-(e.clientX-drag.x)/pw*w2;setView(a,a+w2)}}
+      else scrubAt(e.clientX)});
+    function up(e){var q=ptr[e.pointerId];delete ptr[e.pointerId];if(pts().length<2)pinch=null;
+      if(drag&&!drag.moved&&q)scrubAt(q.x);drag=null}
+    cv.addEventListener("pointerup",up);cv.addEventListener("pointercancel",up);
+  }
+  attach(c2,false);attach(c3,true);
+  function wireSb(id){var sb=$(id),d=null;
+    sb.addEventListener("pointerdown",function(e){if(span()>=0.999)return;try{sb.setPointerCapture(e.pointerId)}catch(x){}
+      var r=sb.getBoundingClientRect(),f=(e.clientX-r.left)/r.width,w=span();
+      if(f<pv.a||f>pv.b)setView(f-w/2,f+w/2);d={x:e.clientX,a:pv.a}});
+    sb.addEventListener("pointermove",function(e){if(!d)return;var r=sb.getBoundingClientRect(),w=span(),a=d.a+(e.clientX-d.x)/r.width;setView(a,a+w)});
+    var up=function(){d=null};sb.addEventListener("pointerup",up);sb.addEventListener("pointercancel",up)}
+  wireSb("sb2");wireSb("sb3");
+  function mid(){return (pv.a+pv.b)/2}
+  $("z2In").onclick=$("pfIn").onclick=function(){zoomAt(mid(),.5)};
+  $("z2Out").onclick=$("pfOut").onclick=function(){zoomAt(mid(),2)};
+  $("z2All").onclick=$("pfReset").onclick=function(){setView(0,1)};
+  function open(){ov.hidden=false;document.body.style.overflow="hidden";scrubTxt();setTimeout(redraw,30)}
+  function close(){ov.hidden=true;document.body.style.overflow="";drawCharts();sbUpd()}
   $("pFullBtn").onclick=open;$("pfClose").onclick=close;
-  $("pfIn").onclick=function(){zoomAt((pv.a+pv.b)/2,.5)};$("pfOut").onclick=function(){zoomAt((pv.a+pv.b)/2,2)};
-  $("pfReset").onclick=function(){setView(0,1)};
   document.addEventListener("keydown",function(e){if(!ov.hidden&&e.key==="Escape")close()});
-  cv.addEventListener("wheel",function(e){e.preventDefault();zoomAt(fracAt(e.clientX),e.deltaY<0?.8:1.25)},{passive:false});
-  function pts(){return Object.keys(ptr).map(function(k){return ptr[k]})}
-  cv.addEventListener("pointerdown",function(e){try{cv.setPointerCapture(e.pointerId)}catch(x){}
-    ptr[e.pointerId]={x:e.clientX,y:e.clientY};var p=pts();
-    if(p.length===2){pinch={d:Math.abs(p[0].x-p[1].x)||1,mid:(p[0].x+p[1].x)/2,a:pv.a,b:pv.b};drag=null}
-    else if(e.pointerType==="mouse"&&span()<1&&e.button===0&&e.shiftKey){drag={x:e.clientX,a:pv.a}}
-    else scrubAt(e.clientX)});
-  cv.addEventListener("pointermove",function(e){
-    if(!ptr[e.pointerId]){if(e.pointerType==="mouse")scrubAt(e.clientX);return}
-    ptr[e.pointerId]={x:e.clientX,y:e.clientY};var p=pts(),r=cv.getBoundingClientRect(),pw=r.width-L-R;
-    if(pinch&&p.length>=2){var d=Math.abs(p[0].x-p[1].x)||1,mid=(p[0].x+p[1].x)/2,w0=pinch.b-pinch.a,w=clamp(w0*pinch.d/d,0.01,1),
-      f0=pinch.a+clamp((pinch.mid-r.left-L)/pw,0,1)*w0,rel=clamp((mid-r.left-L)/pw,0,1);setView(f0-rel*w,f0-rel*w+w)}
-    else if(drag){var w=span();setView(drag.a-(e.clientX-drag.x)/pw*w,drag.a-(e.clientX-drag.x)/pw*w+w)}
-    else scrubAt(e.clientX)});
-  function up(e){delete ptr[e.pointerId];if(pts().length<2)pinch=null;drag=null}
-  cv.addEventListener("pointerup",up);cv.addEventListener("pointercancel",up);
-  window.addEventListener("resize",function(){if(!ov.hidden)draw()});
+  window.addEventListener("resize",function(){if(!ov.hidden)redraw()});
+  window.tccSbUpd=sbUpd;sbUpd();
 })();
 
 /* ================= alerts ================= */
@@ -842,14 +851,14 @@ function tick(){
   $("sBuf").textContent=km>0.5&&elapsed>0?hms(bufMs):"-";
   cnt.classList.add(left2<0?"bad":(bufMs<0||left2<20*60000)?"warn":"ok");
 }
-function drawCharts(){drawProfile($("prof"),false);if(!$("p-hill").hidden)drawProfile($("prof2"),true);if(!$("pfull").hidden)drawProfile($("prof3"),true)}
+function drawCharts(){if(window.tccSbUpd)window.tccSbUpd();drawProfile($("prof"),false);if(!$("p-hill").hidden)drawProfile($("prof2"),true);if(!$("pfull").hidden)drawProfile($("prof3"),true)}
 function drawAll(){drawCharts();reqDraw()}
 function onPos(){var km=runnerKm();checkAlerts(km);hillLine(km);if(follow)centerRunner();drawAll();tick();
   if(!$("p-hill").hidden)renderHills()}
 
 /* ================= route UI ================= */
 function setRoute(r,persist){
-  route=r;selSeg=null;scrubKm=null;lastKm=null;buildEvents();
+  route=r;selSeg=null;scrubKm=null;lastKm=null;pv.a=0;pv.b=1;buildEvents();
   var km=Math.floor(r.total/100)/10;$("simKm").max=Math.max(km,1);
   if(simKm>km){simKm=0;$("simKm").value=0;$("simKmV").textContent="0.0"}
   $("gTotal").textContent=(r.total/1000).toFixed(1)+" กม.";$("gGain").textContent=Math.round(r.gain)+" ม.";$("gMax").textContent=Math.round(r.max)+" ม.";
@@ -1055,9 +1064,9 @@ $("tClear").onclick=function(){var b=$("tClear");
 
 
 /* ================= กลุ่มวิ่ง (Firebase Realtime Database ผ่าน REST ไม่ต้องล็อกอิน) ================= */
-var grp={on:false,room:"",name:"",friends:[],sentLocal:0,offset:0,lastOk:0,lastTry:0,lastFix:0,pushErr:"",pollErr:"",timer:0,busy:false};
+var grp={on:false,room:"",name:"",friends:[],sentLocal:0,offset:0,lastOk:0,lastTry:0,lastFix:0,pushErr:"",pollErr:"",timer:0,busy:false,routeKey:"",routeTried:0};
 var FCOL=["#7b3fe4","#e11d74","#0ea5a5","#4f46e5","#c026d3","#0f766e","#be185d","#6d28d9"];
-var GRULES='{\n  "rules": {\n    "rooms": {\n      "$room": {\n        ".read": true,\n        "$uid": {\n          ".write": true,\n          ".validate": "newData.hasChildren([\'n\',\'la\',\'lo\',\'s\']) && newData.child(\'n\').isString() && newData.child(\'n\').val().length <= 24 && newData.child(\'la\').isNumber() && newData.child(\'lo\').isNumber()"\n        }\n      }\n    }\n  }\n}';
+var GRULES="{\n  \"rules\": {\n    \"rooms\": {\n      \"$room\": {\n        \".read\": true,\n        \"_route\": {\n          \".write\": true,\n          \".validate\": \"newData.hasChildren(['p','h']) && newData.child('p').isString() && newData.child('p').val().length < 90000\"\n        },\n        \"$uid\": {\n          \".write\": true,\n          \".validate\": \"$uid == '_route' || (newData.hasChildren(['n','la','lo','s']) && newData.child('n').isString() && newData.child('n').val().length <= 24 && newData.child('la').isNumber() && newData.child('lo').isNumber())\"\n        }\n      }\n    }\n  }\n}";
 function myUid(){var u=LS.get("tcc.uid");if(!u){u=Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);LS.set("tcc.uid",u)}return u}
 function fbBase(){var u=(S.fbUrl||(window.TCC_CONFIG&&window.TCC_CONFIG.fbUrl)||"").trim();return u.replace(/\/+$/,"")}
 function colorOf(id){var h=0;for(var i=0;i<id.length;i++)h=(h*31+id.charCodeAt(i))>>>0;return FCOL[h%FCOL.length]}
@@ -1077,12 +1086,12 @@ function friendMarker(c,x,y,f){
 }
 
 async function gPush(){
-  if(!S.gShare||!gpsFix)return;
+  if(S.gView||!S.gShare||!gpsFix)return;
   var now=Date.now();
   if(now-grp.lastTry<8000&&gpsFix.t===grp.lastFix)return;
   if(gpsFix.t===grp.lastFix&&now-grp.lastTry<30000)return;
   grp.lastTry=now;
-  var body=JSON.stringify({n:grp.name,la:Math.round(gpsFix.lat*1e6)/1e6,lo:Math.round(gpsFix.lon*1e6)/1e6,ac:Math.round(gpsFix.acc),t:gpsFix.t,s:{".sv":"timestamp"}});
+  var body=JSON.stringify({n:grp.name,la:Math.round(gpsFix.lat*1e6)/1e6,lo:Math.round(gpsFix.lon*1e6)/1e6,ac:Math.round(gpsFix.acc),t:gpsFix.t,k:(route&&!route.sample&&gpsKm!=null?Math.round(gpsKm*100)/100:null),s:{".sv":"timestamp"}});
   try{
     var t0=Date.now(),r=await fetchT(fbBase()+"/rooms/"+grp.room+"/"+myUid()+".json",{method:"PUT",body:body,headers:{"Content-Type":"application/json"}},8000);
     if(!r.ok)throw new Error("HTTP "+r.status);
@@ -1096,10 +1105,10 @@ async function gPoll(){
     var data=await r.json(),me=null,list=[],mine=myUid();
     if(data&&typeof data==="object"){
       Object.keys(data).forEach(function(k){
-        var d=data[k];if(!d||typeof d!=="object")return;
+        if(k==="_route")return;var d=data[k];if(!d||typeof d!=="object")return;
         var la=+d.la,lo=+d.lo,s=+d.s;if(!isFinite(la)||!isFinite(lo)||!isFinite(s)||Math.abs(la)>90||Math.abs(lo)>180)return;
         if(k===mine){me=d;return}
-        list.push({id:k,name:String(d.n||"?").slice(0,24),lat:la,lon:lo,acc:+d.ac||0,t:+d.t||s,s:s,color:colorOf(k)});
+        list.push({id:k,k:(d.k==null?null:+d.k),name:String(d.n||"?").slice(0,24),lat:la,lon:lo,acc:+d.ac||0,t:+d.t||s,s:s,color:colorOf(k)});
       });
     }
     if(me&&isFinite(+me.s)&&grp.sentLocal)grp.offset=+me.s-grp.sentLocal;
@@ -1107,15 +1116,53 @@ async function gPoll(){
     list.forEach(function(f){
       f.u=(f.lon+180)/360;f.v=merc(f.lat);f.age=Math.max(0,now-f.s);f.stale=f.age>5*60000;
       f.km=null;f.off=null;f.ni=0;
-      if(route){var q=nearestIn(f.lat,f.lon,0,route.n);f.km=q.km;f.off=q.off;f.ni=q.i}
+      if(route&&!route.sample){var q=nearestIn(f.lat,f.lon,0,route.n);f.km=q.km;f.off=q.off;f.ni=q.i}
+      else if(isFinite(f.k)&&f.k!=null){f.km=f.k;f.ni=route?clamp(Math.round(f.k*1000/route.step),0,route.n):0}
     });
     list=list.filter(function(f){return f.age<12*3600000});
     grp.friends=list;grp.pollErr="";
   }catch(e){grp.pollErr=(e&&/HTTP (401|403)/.test(e.message))?"ฐานข้อมูลไม่อนุญาต ตรวจกฎ (rules)":"ไม่มีสัญญาณอินเทอร์เน็ต"}
 }
+function routeId(r){return Math.round(r.total)+"_"+r.n}
+function routePack(){var st=Math.max(1,Math.round(40/route.step)),out=[],pl=0,po=0,pe=0,i,idx=[];
+  for(i=0;i<route.n;i+=st)idx.push(i);idx.push(route.n);
+  idx.forEach(function(i){var la=Math.round(route.lat[i]*1e5),lo=Math.round(route.lon[i]*1e5),el=Math.round(route.ele[i]);out.push((la-pl)+","+(lo-po)+","+(el-pe));pl=la;po=lo;pe=el});
+  return out.join(";")}
+function routeUnpack(p){var pts=[],la=0,lo=0,el=0;
+  String(p).split(";").forEach(function(t){var q=t.split(",");la+=+q[0];lo+=+q[1];el+=+q[2];
+    if(!isFinite(la)||!isFinite(lo)||!isFinite(el)||Math.abs(la)>9e6||Math.abs(lo)>18e6)throw new Error("bad route");pts.push([la/1e5,lo/1e5,el])});
+  if(pts.length<2)throw new Error("bad route");return pts}
+function restoreOwn(){
+  if(ownPlan){cps=ownPlan.cps;planStart=ownPlan.ps;ownPlan=null;renderCps();$("planStart").value=planStart;save()}
+  if(route&&route.viewer){var r=LS.get("tcc.route"),nr=null;if(r){try{nr=build(JSON.parse(r))}catch(e){}}setRoute(nr||sampleRoute(),false)}
+}
+async function gSyncRoute(){
+  var base=fbBase()+"/rooms/"+grp.room+"/_route",real=route&&!route.sample&&!route.viewer;
+  if(real&&!S.gView){
+    var id=routeId(route),key=grp.room+"|"+id;if(grp.routeKey===key)return;
+    var r=await fetchT(base+"/h.json",{cache:"no-store"},8000);if(!r.ok)throw new Error("HTTP "+r.status);
+    var hh=await r.json();
+    if(hh!==id){
+      var body=JSON.stringify({nm:String(route.name||"").slice(0,40),h:id,tot:Math.round(route.total),p:routePack(),
+        c:JSON.stringify(cps.map(function(x){return [String(x.name||"").slice(0,20),x.km,x.time]})),ps:planStart,s:{".sv":"timestamp"}});
+      var r2=await fetchT(base+".json",{method:"PUT",body:body,headers:{"Content-Type":"application/json"}},15000);
+      if(!r2.ok)throw new Error("HTTP "+r2.status);
+    }
+    grp.routeKey=key;return;
+  }
+  if(real)return;
+  var now=Date.now();if(now-grp.routeTried<(route&&route.viewer?60000:15000))return;grp.routeTried=now;
+  var q=await fetchT(base+".json",{cache:"no-store"},15000);if(!q.ok)throw new Error("HTTP "+q.status);
+  var d=await q.json();if(!d||!d.p)return;
+  if(route&&route.viewer&&route.vh===d.h)return;
+  var R=build({name:String(d.nm||"เส้นทางจากกลุ่ม"),pts:routeUnpack(d.p)});R.viewer=true;R.vh=d.h;
+  if(S.gView&&d.c){try{var cc=JSON.parse(d.c).map(function(x){return {name:String(x[0]),km:+x[1],time:String(x[2])}}).filter(function(x){return isFinite(x.km)&&/^\d{1,2}:\d{2}$/.test(x.time)});
+    if(cc.length){if(!ownPlan)ownPlan={cps:cps,ps:planStart};cps=cc;if(/^\d{1,2}:\d{2}$/.test(d.ps||""))planStart=d.ps;renderCps();$("planStart").value=planStart}}catch(e){}}
+  setRoute(R,false);$("gpxMsg").className="msg";$("gpxMsg").textContent="ใช้เส้นทางจากกลุ่ม "+grp.room+" (ดูอย่างเดียว ไม่ได้บันทึกในเครื่อง)";
+}
 async function gCycle(){
   if(!grp.on||grp.busy)return;grp.busy=true;
-  try{await gPush();await gPoll()}finally{grp.busy=false}
+  try{await gPush();try{await gSyncRoute()}catch(e){}await gPoll()}finally{grp.busy=false}
   renderGroup();drawAll();
 }
 function gLoop(){clearTimeout(grp.timer);if(!grp.on)return;gCycle().then(function(){grp.timer=setTimeout(gLoop,5000)})}
@@ -1127,6 +1174,7 @@ function gStatus(){
   var err=grp.pushErr||grp.pollErr;
   if(err){m.className="msg err";m.textContent=err+(grp.lastOk?" · ส่งสำเร็จล่าสุด "+hhmm(grp.lastOk)+" น.":"");return}
   m.className="msg";
+  if(S.gView){m.textContent="โหมดผู้ชม · เชื่อมต่อแล้ว (ไม่ส่งตำแหน่งของคุณ)";return}
   m.textContent="เชื่อมต่อแล้ว · "+(S.gShare?(gpsFix?"ส่งตำแหน่งล่าสุด "+hhmm(grp.lastOk||Date.now())+" น.":"เปิด GPS ที่แท็บตั้งค่าเพื่อแชร์ตำแหน่ง"):"หยุดแชร์ตำแหน่งของคุณอยู่ (ยังเห็นเพื่อน)");
 }
 function renderGroup(){
@@ -1135,9 +1183,9 @@ function renderGroup(){
   $("gLeave").hidden=!grp.on;$("gJoin").textContent=grp.on?"อัปเดตชื่อ/รหัส":"เข้าร่วมกลุ่ม";
   var line=$("grpLine");
   if(!grp.on){line.hidden=true;return}
-  var myKm=runnerKm(),rows=[{me:true,name:grp.name||"ฉัน",km:myKm,color:"#e8590c",off:offRoute?(gpsFix?gpsFix.off:0):null,age:0,stale:false}].concat(grp.friends.map(function(f){return f}));
+  var viewer=!!S.gView,rt=route&&!route.sample?route.total/1000:null,myKm=runnerKm(),rows=(viewer?[]:[{me:true,name:grp.name||"ฉัน",km:myKm,color:"#e8590c",off:offRoute?(gpsFix?gpsFix.off:0):null,age:0,stale:false}]).concat(grp.friends.map(function(f){return f}));
   rows.sort(function(a,b){return (b.km==null?-1:b.km)-(a.km==null?-1:a.km)});
-  var head=document.createElement("div");head.className="ghead";["ชื่อ","กม.","ต่างจากฉัน","เห็นเมื่อ"].forEach(function(t){var s=document.createElement("span");s.textContent=t;head.appendChild(s)});box.appendChild(head);
+  var head=document.createElement("div");head.className="ghead";["ชื่อ","กม.",viewer?"เหลือ":"ต่างจากฉัน","เห็นเมื่อ"].forEach(function(t){var s=document.createElement("span");s.textContent=t;head.appendChild(s)});box.appendChild(head);
   rows.forEach(function(f){
     var r=document.createElement("div");r.className="grow"+(f.me?" me":"");
     var nm=document.createElement("span");nm.className="gn";
@@ -1151,37 +1199,45 @@ function renderGroup(){
     if(!f.me&&f.stale){t2.textContent+=" · สัญญาณเก่า";t2.className="bad"}
     tx.appendChild(t1);tx.appendChild(document.createElement("br"));tx.appendChild(t2);nm.appendChild(dot);nm.appendChild(tx);r.appendChild(nm);
     var c2=document.createElement("span");c2.className="n mono";c2.textContent=f.km!=null?f.km.toFixed(1):"-";r.appendChild(c2);
-    var c3=document.createElement("span");c3.className="n mono";c3.textContent=f.me?"-":(f.km!=null?(f.km-myKm>=0?"+":"−")+Math.abs(f.km-myKm).toFixed(1)+" กม.":"-");r.appendChild(c3);
+    var c3=document.createElement("span");c3.className="n mono";c3.textContent=viewer?(f.km!=null&&rt!=null?Math.max(0,rt-f.km).toFixed(1)+" กม.":"-"):f.me?"-":(f.km!=null?(f.km-myKm>=0?"+":"−")+Math.abs(f.km-myKm).toFixed(1)+" กม.":"-");r.appendChild(c3);
     var c4=document.createElement("span");c4.className="n mono"+(f.stale?" bad":"");c4.textContent=f.me?"ตอนนี้":ageTxt(f.age)+"ก่อน";r.appendChild(c4);
     box.appendChild(r);
   });
-  if(!grp.friends.length){var em=document.createElement("div");em.className="hempty";em.textContent="ยังไม่มีเพื่อนในกลุ่ม ส่งลิงก์เชิญให้เพื่อนเปิดแล้วกดเข้าร่วม";box.appendChild(em)}
+  if(!grp.friends.length){var em=document.createElement("div");em.className="hempty";em.textContent=(viewer?"ยังไม่มีเพื่อนส่งตำแหน่งในกลุ่มนี้":"ยังไม่มีเพื่อนในกลุ่ม ส่งลิงก์เชิญให้เพื่อนเปิดแล้วกดเข้าร่วม");box.appendChild(em)}
   // สรุปบนหน้าหลัก
   var ahead=null,behind=null;
   grp.friends.forEach(function(f){if(f.km==null)return;var d=f.km-myKm;if(d>=0&&(!ahead||d<ahead.d))ahead={d:d,f:f};if(d<0&&(!behind||-d<behind.d))behind={d:-d,f:f}});
-  var txt="กลุ่ม "+grp.room+" · "+(grp.friends.length+1)+" คน";
-  if(ahead)txt+=" · นำหน้า: "+ahead.f.name+" +"+ahead.d.toFixed(1)+" กม.";
-  if(behind)txt+=" · ตามหลัง: "+behind.f.name+" −"+behind.d.toFixed(1)+" กม.";
+  var txt=viewer?"ผู้ชม · กลุ่ม "+grp.room+" · "+grp.friends.length+" คนกำลังวิ่ง":"กลุ่ม "+grp.room+" · "+(grp.friends.length+1)+" คน";
+  if(viewer){var lead=null;grp.friends.forEach(function(f){if(f.km!=null&&(!lead||f.km>lead.km))lead=f});if(lead)txt+=" · นำ: "+lead.name+" กม. "+lead.km.toFixed(1)}
+  if(!viewer&&ahead)txt+=" · นำหน้า: "+ahead.f.name+" +"+ahead.d.toFixed(1)+" กม.";
+  if(!viewer&&behind)txt+=" · ตามหลัง: "+behind.f.name+" −"+behind.d.toFixed(1)+" กม.";
   line.hidden=false;line.textContent=txt;
 }
 function joinGroup(){
   var name=$("gName").value.trim().slice(0,24),room=$("gRoom").value.trim().toUpperCase().replace(/[^A-Z0-9]/g,""),m=$("gMsg");
-  if(!name){m.className="msg err";m.textContent="ใส่ชื่อของคุณก่อน";return}
+  if(!name&&S.gView)name="ผู้ชม";
+  if(!name){m.className="msg err";m.textContent="ใส่ชื่อของคุณก่อน (หรือเลือกโหมดผู้ชม)";return}
   if(!roomOk(room)){m.className="msg err";m.textContent="รหัสกลุ่มต้องเป็นตัวอักษร A-Z หรือเลข 4-12 ตัว";return}
   if(!fbBase()){gStatus();return}
   var changed=grp.on&&(grp.room!==room);
   if(changed){try{fetchT(fbBase()+"/rooms/"+grp.room+"/"+myUid()+".json",{method:"DELETE"},5000)}catch(e){}}
-  grp.on=true;grp.room=room;grp.name=name;grp.friends=[];grp.lastFix=0;grp.lastTry=0;
-  S.gName=name;S.gRoom=room;S.gOn=true;save();$("gRoom").value=room;unlockAudio();
+  grp.on=true;grp.room=room;grp.name=name;grp.friends=[];grp.lastFix=0;grp.lastTry=0;grp.routeKey="";grp.routeTried=0;
+  S.gName=S.gView&&name==="ผู้ชม"?(S.gName||""):name;S.gRoom=room;S.gOn=true;save();$("gRoom").value=room;unlockAudio();
   gLoop();renderGroup();
 }
 function leaveGroup(){
   if(!grp.on)return;
   try{fetchT(fbBase()+"/rooms/"+grp.room+"/"+myUid()+".json",{method:"DELETE"},5000)}catch(e){}
-  grp.on=false;grp.friends=[];clearTimeout(grp.timer);S.gOn=false;save();renderGroup();drawAll();
+  grp.on=false;grp.friends=[];clearTimeout(grp.timer);S.gOn=false;save();restoreOwn();renderGroup();drawAll();
 }
 $("gJoin").onclick=joinGroup;$("gLeave").onclick=leaveGroup;
 $("gNew").onclick=function(){var a="ABCDEFGHJKLMNPQRSTUVWXYZ23456789",s="";for(var i=0;i<6;i++)s+=a.charAt(Math.floor(Math.random()*a.length));$("gRoom").value=s};
+$("gView").onchange=function(e){S.gView=e.target.checked;save();
+  if(grp.on){if(S.gView){try{fetchT(fbBase()+"/rooms/"+grp.room+"/"+myUid()+".json",{method:"DELETE"},5000)}catch(x){}}else restoreOwn();grp.routeKey="";grp.routeTried=0;gLoop()}
+  renderGroup();drawAll()};
+$("gCopyV").onclick=function(){var room=($("gRoom").value||grp.room||"").trim().toUpperCase().replace(/[^A-Z0-9]/g,"");
+  if(!roomOk(room)){$("gMsg").className="msg err";$("gMsg").textContent="สร้างหรือใส่รหัสกลุ่มก่อน";return}
+  copyText(location.href.split("#")[0]+"#g="+room+"&v=1",$("gCopyV"),"คัดลอกลิงก์ผู้ชม")};
 $("gShare").onchange=function(e){S.gShare=e.target.checked;save();if(grp.on)gStatus()};
 $("fbUrl").addEventListener("change",function(){S.fbUrl=$("fbUrl").value.trim();save();renderGroup()});
 function copyText(txt,btn,label){
@@ -1228,10 +1284,12 @@ var _r=route;route=null;setRoute(_r,false);
 lastKm=runnerKm();
 window.addEventListener("resize",function(){drawAll()});
 try{window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change",function(){drawAll()})}catch(e){}
-$("gName").value=S.gName||"";$("gRoom").value=S.gRoom||"";$("gShare").checked=S.gShare!==false;$("fbUrl").value=S.fbUrl||"";
+$("gName").value=S.gName||"";$("gRoom").value=S.gRoom||"";$("gShare").checked=S.gShare!==false;$("gView").checked=!!S.gView;$("fbUrl").value=S.fbUrl||"";
 var hm=/[#&]g=([A-Za-z0-9]{4,12})/.exec(location.hash);
-if(hm){$("gRoom").value=hm[1].toUpperCase();showTab("grp");$("gMsg").className="msg";$("gMsg").textContent="ใส่ชื่อของคุณแล้วกด เข้าร่วมกลุ่ม"}
-else if(S.gOn&&S.gName&&roomOk(S.gRoom||"")&&fbBase()){grp.on=true;grp.name=S.gName;grp.room=S.gRoom;gLoop()}
+if(hm){$("gRoom").value=hm[1].toUpperCase();showTab("grp");$("gMsg").className="msg";
+  if(/[#&]v=1/.test(location.hash)){S.gView=true;$("gView").checked=true;save();if(fbBase())joinGroup();else gStatus()}
+  else $("gMsg").textContent="ใส่ชื่อของคุณแล้วกด เข้าร่วมกลุ่ม"}
+else if(S.gOn&&(S.gName||S.gView)&&roomOk(S.gRoom||"")&&fbBase()){grp.on=true;grp.name=S.gName||"ผู้ชม";grp.room=S.gRoom;gLoop()}
 if(!hm)renderGroup();
 setInterval(tick,1000);tick();
 regSW();

@@ -100,6 +100,8 @@
   <div class="pane" id="p-hill" hidden>
     <div class="scrub mono" id="scrub">แตะหรือลากบนกราฟเพื่อดูความชัน</div>
     <div class="canvas-box"><canvas id="prof2" class="cv-prof tall"></canvas><button class="pfbtn" id="pFullBtn" aria-label="กราฟเต็มจอ">⤢ เต็มจอ</button></div>
+    <div class="sbar" id="sb2" aria-label="แถบเลื่อนกราฟ"><div class="sthumb"></div></div>
+    <div class="row"><button class="btn" id="z2Out" aria-label="ซูมออก">−</button><button class="btn" id="z2In" aria-label="ซูมเข้า">+</button><button class="btn" id="z2All">ทั้งหมด</button><span class="note" style="align-self:center">ซูมแล้วลากกราฟหรือแถบด้านบนเพื่อเลื่อน</span></div>
     <div class="legend" id="legend"></div>
     <div class="row">
       <button class="btn" id="fUp" aria-pressed="true">ทางขึ้น</button>
@@ -135,9 +137,11 @@
         <button class="btn primary" id="gJoin">เข้าร่วมกลุ่ม</button>
         <button class="btn" id="gNew">สร้างรหัสใหม่</button>
         <button class="btn" id="gCopy">คัดลอกลิงก์เชิญ</button>
+        <button class="btn" id="gCopyV">คัดลอกลิงก์ผู้ชม</button>
         <button class="btn danger" id="gLeave" hidden>ออกจากกลุ่ม</button>
       </div>
       <label class="chk"><input type="checkbox" id="gShare" checked> แชร์ตำแหน่งของฉันให้คนในกลุ่ม</label>
+      <label class="chk"><input type="checkbox" id="gView"> โหมดผู้ชม: แค่ดูเพื่อนวิ่ง ไม่ต้องมีไฟล์ GPX หรือเปิด GPS (ไม่ส่งตำแหน่งของฉัน)</label>
       <div class="msg" id="gMsg"></div>
       <p class="note">ใครมีรหัสกลุ่มก็เห็นตำแหน่งของคนในกลุ่มได้ ส่งรหัสเฉพาะคนที่ไว้ใจ ทุกคนต้องใช้ไฟล์ GPX เดียวกัน และเปิด GPS ที่แท็บตั้งค่า ตำแหน่งส่งผ่านอินเทอร์เน็ต ถ้าไม่มีสัญญาณ เพื่อนจะเห็นตำแหน่งล่าสุดและเวลาที่เห็นล่าสุด พอสัญญาณกลับมาแอปส่งตำแหน่งปัจจุบันให้เอง</p>
     </section>
@@ -146,7 +150,7 @@
       <summary>ตั้งค่า Firebase (ทำครั้งเดียวต่อกลุ่มเพื่อน)</summary>
       <div class="field"><label class="label" for="fbUrl">ที่อยู่ฐานข้อมูล (Realtime Database URL)</label>
         <input type="text" id="fbUrl" placeholder="https://ชื่อโปรเจกต์-default-rtdb.asia-southeast1.firebasedatabase.app" autocapitalize="off" autocomplete="off" spellcheck="false"></div>
-      <p class="note">1) สร้างโปรเจกต์ที่ console.firebase.google.com (แผนฟรี) 2) เมนู Build แล้วเลือก Realtime Database กด Create Database 3) แท็บ Rules วางกฎด้านล่างแล้วกด Publish 4) คัดลอกที่อยู่ฐานข้อมูลมาใส่ช่องด้านบน หรือใส่ในไฟล์ config.js ให้เพื่อนใช้ร่วมกัน</p>
+      <p class="note">1) สร้างโปรเจกต์ที่ console.firebase.google.com (แผนฟรี) 2) เมนู Build แล้วเลือก Realtime Database กด Create Database 3) แท็บ Rules วางกฎด้านล่างแล้วกด Publish (ถ้าเคยวางกฎรุ่นเก่าไว้ ให้วางใหม่ เพราะรุ่นนี้เพิ่มการแชร์เส้นทางให้โหมดผู้ชม) 4) คัดลอกที่อยู่ฐานข้อมูลมาใส่ช่องด้านบน หรือใส่ในไฟล์ config.js ให้เพื่อนใช้ร่วมกัน</p>
       <textarea class="gout" id="fbRules" rows="12" readonly></textarea>
       <div class="row"><button class="btn" id="fbCopy">คัดลอกกฎ (rules)</button></div>
     </details>
@@ -246,6 +250,7 @@
     <button class="btn" id="pfReset">ทั้งหมด</button><button class="btn primary" id="pfClose">ปิด</button>
   </div>
   <canvas id="prof3"></canvas>
+  <div class="sbar" id="sb3" aria-label="แถบเลื่อนกราฟ"><div class="sthumb"></div></div>
 </div>
 <script src="config.js"></script>
 <script src="app.js"></script>

@@ -133,6 +133,15 @@
         <div class="field"><label class="label" for="gName">ชื่อของคุณ</label><input type="text" id="gName" maxlength="24" autocomplete="off" placeholder="เช่น แบงค์"></div>
         <div class="field"><label class="label" for="gRoom">รหัสกลุ่ม</label><input type="text" id="gRoom" maxlength="12" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="เช่น TNT100"></div>
       </div>
+      <span class="label">ตัวละครของคุณ (แสดงบนแผนที่และกราฟ)</span>
+      <div class="avprev" id="avPrev"></div>
+      <div class="avpick" id="avPick" role="group" aria-label="เลือกตัวละคร"></div>
+      <div class="row">
+        <button class="btn" id="avUp" type="button">อัปโหลดรูปทำเป็นตัวละคร 8 บิต</button>
+        <label class="chk"><input type="checkbox" id="avBg" checked> ลบพื้นหลัง (ไม่ติ๊ก = ตัดเป็นวงรี)</label>
+      </div>
+      <input type="file" id="avFile" accept="image/*" hidden>
+      <div class="msg" id="avMsg"></div>
       <div class="row">
         <button class="btn primary" id="gJoin">เข้าร่วมกลุ่ม</button>
         <button class="btn" id="gNew">สร้างรหัสใหม่</button>

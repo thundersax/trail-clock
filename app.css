@@ -155,3 +155,11 @@ details.panel summary{cursor:pointer;font-weight:600}
 .sbar .sthumb{position:absolute;top:0;bottom:0;border-radius:9px;background:var(--accent);min-width:30px}
 .sbar.off{opacity:.3;cursor:default}
 .pfull .sbar{margin:6px 14px 14px;height:24px}
+
+/* ตัวละคร 8 บิต */
+.avpick{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:8px 0}
+.avb{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 4px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font:500 12px var(--font);cursor:pointer}
+.avb[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset}
+.avprev{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:16px}
+.gdot canvas{display:block;margin:1px}
+.gdot{display:flex;align-items:center;justify-content:center;width:28px;height:28px}

@@ -19,7 +19,7 @@ var cps=[
   {name:"เส้นชัย",km:54,time:"17:30"}
 ];
 var planStart="03:30",startTs=null,simKm=0,shiftH=0,gpsKm=null,gpsWatch=null;
-var S={alertOn:true,vib:true,snd:true,lead:300,minGain:30,steep:12,offOn:true,offDist:50,tileUrl:"",tileAttr:"",base:"road",satUrl:"",satAttr:"",demUrl:"",ex:3,gName:"",gRoom:"",gOn:false,gShare:true,fbUrl:"",gView:false,gAv:0,gCu:""};
+var S={alertOn:true,vib:true,snd:true,lead:300,minGain:30,steep:12,offOn:true,offDist:50,tileUrl:"",tileAttr:"",base:"road",satUrl:"",satAttr:"",demUrl:"",ex:3,gName:"",gRoom:"",gOn:false,gShare:true,fbUrl:"",gView:false,gAv:0,gCu:"",exv:0};
 var ownPlan=null,gpsFix=null,trail=[],offRoute=false,offFixes=0,reloc=null,lastOffAlert=0,trailSaved=0;
 var events=[],climbs=[],lastKm=null,selSeg=null,scrubKm=null,hillFilter="up",follow=false;
 
@@ -47,6 +47,7 @@ function clamp(v,a,b){return v<a?a:(v>b?b:v)}
 function pace(msPerKm){if(!isFinite(msPerKm)||msPerKm<=0)return "-";var s=Math.round(msPerKm/1000),m=Math.floor(s/60);return m+":"+pad(s%60)+"/กม."}
 function sgn(n,d){var v=n.toFixed(d||0);return (n>0?"+":"")+v}
 function runnerKm(){return gpsKm!=null?gpsKm:simKm}
+function merc2lat(v){var n=Math.PI*(1-2*v);return Math.atan(Math.sinh(n))*180/Math.PI}
 function idxAt(km){if(!route)return 0;return clamp(Math.round(km*1000/route.step),0,route.n)}
 
 /* ================= grade colours ================= */
@@ -275,7 +276,7 @@ function drawMap(){
   c.lineJoin="round";c.lineCap="round";
   // เส้นขอบ
   c.beginPath();for(i=0;i<=route.n;i+=2){i?c.lineTo(X(i),Y(i)):c.moveTo(X(i),Y(i))}
-  c.strokeStyle=css("--surface");c.globalAlpha=.9;c.lineWidth=8;c.stroke();c.globalAlpha=1;
+  c.strokeStyle=css("--surface");c.globalAlpha=.92;c.lineWidth=12;c.stroke();c.globalAlpha=1;
   // สีตามความชัน ทุก 80 ม. ช่วงที่ผ่านแล้วเป็นสีเทาจาง วาดก่อน เพื่อให้ช่วงที่ยังไม่ผ่านอยู่ด้านบนเสมอ
   var chunk=Math.max(2,Math.round(80/route.step)),riP=idxAt(runnerKm());
   for(var pass=0;pass<2;pass++){
@@ -285,7 +286,7 @@ function drawMap(){
       var g=(route.se[e]-route.se[i])/((e-i)*route.step)*100;
       c.beginPath();c.moveTo(X(i),Y(i));
       var q=i+Math.max(1,Math.floor(chunk/2));if(q<e)c.lineTo(X(q),Y(q));c.lineTo(X(e),Y(e));
-      if(done){c.strokeStyle=css("--muted");c.globalAlpha=.5;c.lineWidth=4}else{c.strokeStyle=gc(g);c.globalAlpha=1;c.lineWidth=5}
+      if(done){c.strokeStyle=css("--muted");c.globalAlpha=.55;c.lineWidth=6}else{c.strokeStyle=gc(g);c.globalAlpha=1;c.lineWidth=8}
       c.stroke();
     }
   }
@@ -315,8 +316,10 @@ function drawMap(){
   if(gpsFix){c.beginPath();c.arc(X(ri),Y(ri),7,0,6.283);c.fillStyle=css("--accent");c.fill();c.lineWidth=2.5;c.strokeStyle=css("--surface");c.stroke()}else ownMarker(c,X(ri),Y(ri));
   // รอยทางที่เดินจริง
   if(trail.length>1){
+    var tcol=(grp.on&&!S.gView&&grp.myColor)?grp.myColor:css("--gps");
     c.beginPath();trail.forEach(function(q,k){var x=W/2+(q[2]-MV.u)*ws,y=H/2+(q[3]-MV.v)*ws;k?c.lineTo(x,y):c.moveTo(x,y)});
-    c.strokeStyle=css("--gps");c.globalAlpha=.85;c.lineWidth=2.5;c.setLineDash([1,4]);c.stroke();c.setLineDash([]);c.globalAlpha=1;
+    c.strokeStyle=css("--surface");c.globalAlpha=.9;c.lineWidth=8.5;c.stroke();
+    c.strokeStyle=tcol;c.globalAlpha=1;c.lineWidth=5;c.stroke();c.globalAlpha=1;
   }
   // ตำแหน่ง GPS จริง
   if(gpsFix){
@@ -332,6 +335,10 @@ function drawMap(){
     c.beginPath();c.arc(gx,gy,ar,0,6.283);c.fillStyle=css("--gps");c.globalAlpha=.16;c.fill();c.globalAlpha=1;
     ownMarker(c,gx,gy);
   }
+  // รอยทางของเพื่อน
+  grp.friends.forEach(function(f){var tr=grp.trails[f.id];if(!tr||tr.length<2)return;
+    c.beginPath();tr.forEach(function(q,k){var x=W/2+(q[0]-MV.u)*ws,y=H/2+(q[1]-MV.v)*ws;k?c.lineTo(x,y):c.moveTo(x,y)});
+    c.strokeStyle=css("--surface");c.globalAlpha=.85;c.lineWidth=7.5;c.stroke();c.strokeStyle=f.color;c.globalAlpha=f.stale?.5:1;c.lineWidth=4.5;c.stroke();c.globalAlpha=1});
   // เพื่อนในกลุ่ม
   grp.friends.forEach(function(f){var fx=W/2+(f.u-MV.u)*ws,fy=H/2+(f.v-MV.v)*ws;if(fx<-30||fx>W+30||fy<-30||fy>H+30)return;friendMarker(c,fx,fy,f)});
   // เครดิต
@@ -365,8 +372,8 @@ var DEF_SAT="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/
 var DEF_SAT_ATTR="Imagery © Esri, Maxar, Earthstar Geographics";
 var DEF_DEM="https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
 var DEM_ATTR="ความสูง: Mapzen / AWS Terrain Tiles";
-var mode3d=false,orbit=false,cam={b:0,p:55},EXS=[1,2,3,5,8];
-var G={ok:null,gl:null,tex:new Map(),routeFor:null,lastRi:-2,lastSel:null,lastMuted:"",demOn:0,VP:null,u0:0,v0:0,mpu:1,base:0,eleMean:0,exI:2};
+var mode3d=false,orbit=false,cam={b:0,p:55},EXS=[1,1.5,2,3,5];
+var G={ok:null,gl:null,tex:new Map(),routeFor:null,lastRi:-2,lastSel:null,lastMuted:"",demOn:0,VP:null,u0:0,v0:0,mpu:1,base:0,eleMean:0,exI:0};
 
 function baseUrl(z,x,y){
   var t=S.base==="sat"?(S.satUrl||DEF_SAT):(S.tileUrl||DEF_TILE);
@@ -414,7 +421,7 @@ var VS_T=[
 " float sk=(aG.x<0.5||aG.y<0.5||aG.x>uGrid+1.5||aG.y>uGrid+1.5)?1.0:0.0;",
 " float h=0.0;float sh=1.0;",
 " if(uDemT.w>0.5){",
-"  h=hAt(g);float d=1.0/uGrid;",
+"  h=hAt(g);float d=2.0/uGrid;",
 "  vec2 gx1=min(g+vec2(d,0.0),1.0),gx0=max(g-vec2(d,0.0),0.0),gy1=min(g+vec2(0.0,d),1.0),gy0=max(g-vec2(0.0,d),0.0);",
 "  float dzx=(hAt(gx1)-hAt(gx0))*uEx/((gx1.x-gx0.x)*uTile.z);",
 "  float dzy=-(hAt(gy1)-hAt(gy0))*uEx/((gy1.y-gy0.y)*uTile.z);",
@@ -458,7 +465,7 @@ function glInit(){
     if(!(window.WebGL2RenderingContext&&gl instanceof WebGL2RenderingContext)&&!gl.getExtension("OES_element_index_uint"))throw new Error("no uint index");
     G.gl=gl;G.T=program(gl,VS_T,FS_T);G.R=program(gl,VS_R,FS_R);
     // ตาข่ายของไทล์: (N+3)^2 จุด รวมขอบกันรอยแยก (skirt)
-    var N=32,M=N+3,vs=new Float32Array(M*M*2),ix=[],i,j;
+    var N=64,M=N+3,vs=new Float32Array(M*M*2),ix=[],i,j;
     for(j=0;j<M;j++)for(i=0;i<M;i++){vs[(j*M+i)*2]=i;vs[(j*M+i)*2+1]=j}
     for(j=0;j<M-1;j++)for(i=0;i<M-1;i++){var a=j*M+i,b=a+1,c=a+M,d=c+1;ix.push(a,c,b,b,c,d)}
     G.grid=N;G.nIdx=ix.length;
@@ -479,8 +486,11 @@ function texFor(img,isDem){
     gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL,isDem?gl.NONE:gl.BROWSER_DEFAULT_WEBGL);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,false);
     gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);
-    var f=isDem?gl.NEAREST:gl.LINEAR;
-    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,f);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,f);
+    var f=isDem?gl.NEAREST:gl.LINEAR,wi=img.naturalWidth,hi=img.naturalHeight,pot=(wi&(wi-1))===0&&(hi&(hi-1))===0,isG2=!!(window.WebGL2RenderingContext&&gl instanceof WebGL2RenderingContext);
+    if(!isDem&&(pot||isG2)){gl.generateMipmap(gl.TEXTURE_2D);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);
+      var an=gl.getExtension("EXT_texture_filter_anisotropic");if(an)gl.texParameterf(gl.TEXTURE_2D,an.TEXTURE_MAX_ANISOTROPY_EXT,Math.min(8,gl.getParameter(an.MAX_TEXTURE_MAX_ANISOTROPY_EXT)))}
+    else gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,f);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,f);
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
   }catch(e){img._bad=true;return null}
   if(G.tex.size>300){var n=0;G.tex.forEach(function(v,k){if(n++<80){gl.deleteTexture(v);G.tex.delete(k)}})}
@@ -540,7 +550,7 @@ function draw3d(){
   var bg=hexRGB(css("--bg"));
   gl.viewport(0,0,gw,gh);gl.clearColor(bg[0],bg[1],bg[2],1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
   // ภูมิประเทศ
-  var T=G.T,z0=clamp(Math.floor(MV.z),3,16),nt=Math.pow(2,z0),cx=Math.floor(MV.u*nt),cy=Math.floor(MV.v*nt),R=z0>=13?3:2;
+  var T=G.T,z0=clamp(Math.round(MV.z),3,16),nt=Math.pow(2,z0),cx=Math.floor(MV.u*nt),cy=Math.floor(MV.v*nt),R=z0>=13?3:2;
   var surf=hexRGB(css("--surface")),dz=Math.min(z0,14),sh=z0-dz,sc=1/Math.pow(2,sh),centerDem=0,loading=0,imgFail=0;
   gl.useProgram(T.p);gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.disable(gl.BLEND);
   gl.bindBuffer(gl.ARRAY_BUFFER,G.bufG);var aG=gl.getAttribLocation(T.p,"aG");gl.enableVertexAttribArray(aG);gl.vertexAttribPointer(aG,2,gl.FLOAT,false,0,0);
@@ -574,8 +584,8 @@ function draw3d(){
   gl.bindBuffer(gl.ARRAY_BUFFER,G.bufCol);gl.enableVertexAttribArray(aC);gl.vertexAttribPointer(aC,3,gl.FLOAT,false,0,0);
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,G.bufRI);
   var cc=hexRGB(css("--surface"));
-  gl.uniform1f(Rp.u.uCase,1);gl.uniform3f(Rp.u.uCaseC,cc[0],cc[1],cc[2]);gl.uniform1f(Rp.u.uW,9*dpr);gl.drawElements(gl.TRIANGLES,G.nSeg*6,gl.UNSIGNED_INT,0);
-  gl.uniform1f(Rp.u.uCase,0);gl.uniform1f(Rp.u.uW,5.5*dpr);gl.drawElements(gl.TRIANGLES,G.nSeg*6,gl.UNSIGNED_INT,0);
+  gl.uniform1f(Rp.u.uCase,1);gl.uniform3f(Rp.u.uCaseC,cc[0],cc[1],cc[2]);gl.uniform1f(Rp.u.uW,14*dpr);gl.drawElements(gl.TRIANGLES,G.nSeg*6,gl.UNSIGNED_INT,0);
+  gl.uniform1f(Rp.u.uCase,0);gl.uniform1f(Rp.u.uW,9*dpr);gl.drawElements(gl.TRIANGLES,G.nSeg*6,gl.UNSIGNED_INT,0);
   gl.disableVertexAttribArray(aP);gl.disableVertexAttribArray(aQ);gl.disableVertexAttribArray(aS);gl.disableVertexAttribArray(aC);
 
   // ส่วนซ้อนทับ: หมุด ป้าย ตำแหน่ง GPS
@@ -589,6 +599,16 @@ function draw3d(){
     c.beginPath();c.arc(p[0],p[1],6,0,6.283);c.fillStyle=css("--surface");c.fill();c.lineWidth=2.5;c.strokeStyle=css("--ink");c.stroke();
     var right=p[0]>W-80;c.textAlign=right?"right":"left";var tx3=p[0]+(right?-11:11);
     c.lineWidth=3;c.strokeStyle=css("--surface");c.strokeText(cp.name,tx3,p[1]-11);c.fillStyle=css("--ink");c.fillText(cp.name,tx3,p[1]-11)});
+  var strokeLine3=function(pts,col,alpha){ // pts: [u,v,ni]
+    var step=Math.max(1,Math.ceil(pts.length/1500));
+    var pp=[],k;for(k=0;k<pts.length;k+=step){var q=pts[k],ni=q[2];if(ni==null){ni=nearestIn(merc2lat(q[1]),q[0]*360-180,0,route.n).i;q[2]=ni}
+      pp.push(proj((q[0]-G.u0)*G.mpu,-(q[1]-G.v0)*G.mpu,zOf(clamp(ni,0,route.n))))}
+    if(pp.length<2)return;
+    var path=function(){var open=false;c.beginPath();pp.forEach(function(p){if(!p){open=false;return}open?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]);open=true})};
+    c.lineJoin="round";c.lineCap="round";path();c.strokeStyle=css("--surface");c.globalAlpha=.9*alpha;c.lineWidth=9;c.stroke();
+    path();c.strokeStyle=col;c.globalAlpha=alpha;c.lineWidth=5.5;c.stroke();c.globalAlpha=1};
+  grp.friends.forEach(function(f){var tr=grp.trails[f.id];if(tr&&tr.length>1)strokeLine3(tr,f.color,f.stale?.5:1)});
+  if(trail.length>1){var tr3=trail.map(function(q){return [q[2],q[3],q[4]]});strokeLine3(tr3,(grp.on&&!S.gView&&grp.myColor)?grp.myColor:css("--gps"),1)}
   var s0=rp(0);if(s0){c.beginPath();c.arc(s0[0],s0[1],5,0,6.283);c.fillStyle=css("--ok");c.fill();c.lineWidth=2;c.strokeStyle=css("--surface");c.stroke()}
   var rr=rp(ri);
   if(gpsFix){
@@ -965,7 +985,7 @@ function onFix(p){
   // รอยทางที่เดินจริง (บันทึกเมื่อขยับเกิน 8 ม.)
   var last=trail[trail.length-1];
   if(!last||hav(last[0],last[1],lat,lon)>8){
-    trail.push([lat,lon,gpsFix.u,gpsFix.v]);if(trail.length>4000)trail.splice(0,1000);
+    trail.push([lat,lon,gpsFix.u,gpsFix.v,gpsFix.ni]);if(trail.length>4000)trail.splice(0,1000);
     if(trail.length-trailSaved>=15){trailSaved=trail.length;saveTrail()}
   }
   showOff();onPos();
@@ -1066,12 +1086,15 @@ $("tClear").onclick=function(){var b=$("tClear");
 
 
 /* ================= กลุ่มวิ่ง (Firebase Realtime Database ผ่าน REST ไม่ต้องล็อกอิน) ================= */
-var grp={on:false,room:"",name:"",friends:[],sentLocal:0,offset:0,lastOk:0,lastTry:0,lastFix:0,pushErr:"",pollErr:"",timer:0,busy:false,routeKey:"",routeTried:0,avKey:""};
-var FCOL=["#7b3fe4","#e11d74","#0ea5a5","#4f46e5","#c026d3","#0f766e","#be185d","#6d28d9"];
+var grp={on:false,room:"",name:"",friends:[],sentLocal:0,offset:0,lastOk:0,lastTry:0,lastFix:0,pushErr:"",pollErr:"",timer:0,busy:false,routeKey:"",routeTried:0,avKey:"",myColor:"",trails:{}};
+var FCOL=["#d91e36","#2e9e44","#8e24aa","#00a6a6","#f2b600","#e91e8c","#795548","#7cb518","#455a64","#ff6d00","#1e88e5","#6a1b9a"];
 var GRULES="{\n  \"rules\": {\n    \"rooms\": {\n      \"$room\": {\n        \".read\": true,\n        \"$uid\": {\n          \".write\": true,\n          \".validate\": \"newData.hasChildren(['n','la','lo','s']) && newData.child('n').isString() && newData.child('n').val().length <= 24 && newData.child('la').isNumber() && newData.child('lo').isNumber()\"\n        }\n      }\n    },\n    \"routes\": {\n      \"$room\": {\n        \".read\": true,\n        \".write\": true,\n        \".validate\": \"newData.hasChildren(['p','h']) && newData.child('p').isString() && newData.child('p').val().length < 90000\"\n      }\n    },\n    \"avatars\": {\n      \"$room\": {\n        \".read\": true,\n        \"$uid\": {\n          \".write\": true,\n          \".validate\": \"newData.isString() && newData.val().length < 3200\"\n        }\n      }\n    }\n  }\n}";
 function myUid(){var u=LS.get("tcc.uid");if(!u){u=Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);LS.set("tcc.uid",u)}return u}
 function fbBase(){var u=(S.fbUrl||(window.TCC_CONFIG&&window.TCC_CONFIG.fbUrl)||"").trim();return u.replace(/\/+$/,"")}
 function colorOf(id){var h=0;for(var i=0;i<id.length;i++)h=(h*31+id.charCodeAt(i))>>>0;return FCOL[h%FCOL.length]}
+function assignColors(ids){var map={},used={},list=ids.slice().sort();
+  list.forEach(function(id){var h=0;for(var i=0;i<id.length;i++)h=(h*31+id.charCodeAt(i))>>>0;var k=h%FCOL.length,t=0;while(used[k]&&t<FCOL.length){k=(k+1)%FCOL.length;t++}used[k]=1;map[id]=FCOL[k]});
+  return map}
 function initial(n){return String(n||"?").trim().charAt(0).toUpperCase()||"?"}
 function ageTxt(ms){ms=Math.max(0,ms);var s=Math.round(ms/1000);if(s<60)return s+" วิ";var m=Math.round(s/60);if(m<60)return m+" นาที";return Math.floor(m/60)+" ชม. "+(m%60)+" น."}
 function fetchT(url,opt,ms){var ac=window.AbortController?new AbortController():null,t=setTimeout(function(){if(ac)ac.abort()},ms||8000);
@@ -1111,7 +1134,7 @@ function marker8(c,x,y,av,color,name,stale){
   if(name){c.font="600 11px "+css("--font");c.textAlign="center";c.textBaseline="alphabetic";c.lineWidth=3;c.strokeStyle=css("--surface");c.strokeText(name,x,y+19);c.fillStyle=css("--ink");c.fillText(name,x,y+19)}
   c.restore()}
 function friendMarker(c,x,y,f){marker8(c,x,y,f.av,f.color,f.name,f.stale)}
-function ownMarker(c,x,y){marker8(c,x,y,myAv(),css("--gps"),(grp.on&&grp.name&&!S.gView)?grp.name:"",false)}
+function ownMarker(c,x,y){marker8(c,x,y,myAv(),(grp.on&&!S.gView&&grp.myColor)?grp.myColor:css("--gps"),(grp.on&&grp.name&&!S.gView)?grp.name:"",false)}
 function spriteAt(c,i,x,yPt,sz){var d=spriteDim(spriteImg(i),sz),by=Math.max(yPt-4,d.h+2);drawSprite(c,i,x,by,sz)}
 
 async function gPush(){
@@ -1154,11 +1177,15 @@ async function gPoll(){
       else if(isFinite(f.k)&&f.k!=null){f.km=f.k;f.ni=route?clamp(Math.round(f.k*1000/route.step),0,route.n):0}
     });
     list=list.filter(function(f){return f.age<12*3600000});
+    var cmap=assignColors(list.map(function(f){return f.id}).concat([mine]));grp.myColor=cmap[mine];
+    list.forEach(function(f){f.color=cmap[f.id]||f.color});
     var need=[];
     list.forEach(function(f){if(f.av!==CUI)return;var key=f.id+"|"+f.ch;if(AVC[key]){f.av=AVC[key]}else{f.av=avFallback(f.id);need.push({f:f,key:key})}});
     for(var ni=0;ni<need.length&&ni<6;ni++){var nd=need[ni];if(Date.now()-(AVT[nd.key]||0)<20000)continue;AVT[nd.key]=Date.now();
       try{var ar=await fetchT(fbBase()+"/avatars/"+grp.room+"/"+nd.f.id+".json",{cache:"no-store"},8000);
         if(ar.ok){var cs=await ar.json(),cc=cuDecode(cs);if(cc&&cuHash(cs)===nd.f.ch){AVC[nd.key]=cc;nd.f.av=cc}}}catch(e){}}
+    list.forEach(function(f){var tr=grp.trails[f.id]||(grp.trails[f.id]=[]),last=tr[tr.length-1];
+      if(!last||Math.abs(last[0]-f.u)+Math.abs(last[1]-f.v)>2e-8){tr.push([f.u,f.v,f.ni||0]);if(tr.length>900)tr.splice(0,200)}});
     grp.friends=list;grp.pollErr="";
   }catch(e){grp.pollErr=(e&&/HTTP (401|403)/.test(e.message))?"ฐานข้อมูลไม่อนุญาต ตรวจกฎ (rules)":"ไม่มีสัญญาณอินเทอร์เน็ต"}
 }
@@ -1222,7 +1249,7 @@ function renderGroup(){
   $("gLeave").hidden=!grp.on;$("gJoin").textContent=grp.on?"อัปเดตชื่อ/รหัส":"เข้าร่วมกลุ่ม";
   var line=$("grpLine");
   if(!grp.on){line.hidden=true;return}
-  var viewer=!!S.gView,rt=route&&!route.sample?route.total/1000:null,myKm=runnerKm(),rows=(viewer?[]:[{me:true,av:myAv(),name:grp.name||"ฉัน",km:myKm,color:"#e8590c",off:offRoute?(gpsFix?gpsFix.off:0):null,age:0,stale:false}]).concat(grp.friends.map(function(f){return f}));
+  var viewer=!!S.gView,rt=route&&!route.sample?route.total/1000:null,myKm=runnerKm(),rows=(viewer?[]:[{me:true,av:myAv(),name:grp.name||"ฉัน",km:myKm,color:grp.myColor||"#e8590c",off:offRoute?(gpsFix?gpsFix.off:0):null,age:0,stale:false}]).concat(grp.friends.map(function(f){return f}));
   rows.sort(function(a,b){return (b.km==null?-1:b.km)-(a.km==null?-1:a.km)});
   var head=document.createElement("div");head.className="ghead";["ชื่อ","กม.",viewer?"เหลือ":"ต่างจากฉัน","เห็นเมื่อ"].forEach(function(t){var s=document.createElement("span");s.textContent=t;head.appendChild(s)});box.appendChild(head);
   rows.forEach(function(f){
@@ -1260,14 +1287,14 @@ function joinGroup(){
   if(!fbBase()){gStatus();return}
   var changed=grp.on&&(grp.room!==room);
   if(changed){gDelMine(grp.room)}
-  grp.on=true;grp.room=room;grp.name=name;grp.friends=[];grp.lastFix=0;grp.lastTry=0;grp.routeKey="";grp.routeTried=0;grp.avKey="";grp.avKey="";
+  grp.on=true;grp.room=room;grp.name=name;grp.friends=[];grp.trails={};grp.lastFix=0;grp.lastTry=0;grp.routeKey="";grp.routeTried=0;grp.avKey="";grp.avKey="";
   S.gName=S.gView&&name==="ผู้ชม"?(S.gName||""):name;S.gRoom=room;S.gOn=true;save();$("gRoom").value=room;unlockAudio();
   gLoop();renderGroup();
 }
 function leaveGroup(){
   if(!grp.on)return;
   gDelMine(grp.room)
-  grp.on=false;grp.friends=[];clearTimeout(grp.timer);S.gOn=false;save();restoreOwn();renderGroup();drawAll();
+  grp.on=false;grp.friends=[];grp.trails={};clearTimeout(grp.timer);S.gOn=false;save();restoreOwn();renderGroup();drawAll();
 }
 $("gJoin").onclick=joinGroup;$("gLeave").onclick=leaveGroup;
 $("gNew").onclick=function(){var a="ABCDEFGHJKLMNPQRSTUVWXYZ23456789",s="";for(var i=0;i<6;i++)s+=a.charAt(Math.floor(Math.random()*a.length));$("gRoom").value=s};
@@ -1407,6 +1434,7 @@ $("simKm").value=simKm;$("simKmV").textContent=simKm.toFixed(1);
 $("shift").value=shiftH;$("shiftV").textContent=shiftH.toFixed(1);
 $("aOn").checked=S.alertOn;$("aVib").checked=S.vib;$("aSnd").checked=S.snd;$("aLead").value=S.lead;$("aGain").value=S.minGain;$("aSteep").value=S.steep;$("aOff").checked=S.offOn;$("aOffD").value=S.offDist;
 $("tUrl").value=S.tileUrl||"";$("tAttr").value=S.tileAttr||"";$("sUrl").value=S.satUrl||"";$("sAttr").value=S.satAttr||"";$("dUrl").value=S.demUrl||"";
+if(S.exv!==2){S.ex=1;S.exv=2;save()}
 G.exI=Math.max(0,EXS.indexOf(S.ex));$("r3E").textContent="สูง×"+EXS[G.exI];$("mRoad").setAttribute("aria-pressed",S.base!=="sat");$("mSat").setAttribute("aria-pressed",S.base==="sat");
 loadTrail();renderCps();renderLegend();filterBtns();
 if(!route){route=sampleRoute();$("gpxMsg").textContent="กำลังแสดงเส้นทางตัวอย่าง อัปโหลด GPX จริงได้ที่นี่"}

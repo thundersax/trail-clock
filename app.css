@@ -163,3 +163,12 @@ details.panel summary{cursor:pointer;font-weight:600}
 .avprev{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:16px}
 .gdot canvas{display:block;margin:1px}
 .gdot{display:flex;align-items:center;justify-content:center;width:28px;height:28px}
+
+.rp canvas#rpCv{flex:1 1 40vh;min-height:200px;width:100%;display:block}
+.rpctl{display:flex;gap:8px;align-items:center;padding:8px 12px}.rpctl input{flex:1}
+.rpsp{padding:0 12px;flex-wrap:wrap;gap:6px}.rp .msg{padding:0 12px}
+.rpscroll{overflow:auto;max-height:34vh;padding:6px 12px 12px}
+.rprow{display:flex;gap:8px;align-items:center;padding:4px 0}.rprow b{flex:1}
+.rptb{border-collapse:collapse;width:100%;font-size:12px;margin-top:8px}.rptb th,.rptb td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left}
+.rptb small{color:var(--muted)}
+.rp .btn{flex:0 0 auto;width:auto;padding:8px 12px}.rp .pfbar{justify-content:space-between}.rpctl #rpTime{font-size:12px;min-width:92px}

@@ -969,6 +969,7 @@ function onFix(p){
     }
   }
   gpsFix={lat:lat,lon:lon,acc:acc,t:t,u:(lon+180)/360,v:merc(lat),off:tgt.off,ni:tgt.i};
+  setTimeout(histRec,0);
   if(res){
     gpsKm=res.km;offFixes=0;
     if(offRoute){offRoute=false;showBanner("กลับเข้าเส้นทางแล้ว",false);if(S.vib&&navigator.vibrate){try{navigator.vibrate(200)}catch(e){}}}
@@ -1088,7 +1089,7 @@ $("tClear").onclick=function(){var b=$("tClear");
 /* ================= กลุ่มวิ่ง (Firebase Realtime Database ผ่าน REST ไม่ต้องล็อกอิน) ================= */
 var grp={on:false,room:"",name:"",friends:[],sentLocal:0,offset:0,lastOk:0,lastTry:0,lastFix:0,pushErr:"",pollErr:"",timer:0,busy:false,routeKey:"",routeTried:0,avKey:"",myColor:"",trails:{}};
 var FCOL=["#d91e36","#2e9e44","#8e24aa","#00a6a6","#f2b600","#e91e8c","#795548","#7cb518","#455a64","#ff6d00","#1e88e5","#6a1b9a"];
-var GRULES="{\n  \"rules\": {\n    \"rooms\": {\n      \"$room\": {\n        \".read\": true,\n        \"$uid\": {\n          \".write\": true,\n          \".validate\": \"newData.hasChildren(['n','la','lo','s']) && newData.child('n').isString() && newData.child('n').val().length <= 24 && newData.child('la').isNumber() && newData.child('lo').isNumber()\"\n        }\n      }\n    },\n    \"routes\": {\n      \"$room\": {\n        \".read\": true,\n        \".write\": true,\n        \".validate\": \"newData.hasChildren(['p','h']) && newData.child('p').isString() && newData.child('p').val().length < 90000\"\n      }\n    },\n    \"avatars\": {\n      \"$room\": {\n        \".read\": true,\n        \"$uid\": {\n          \".write\": true,\n          \".validate\": \"newData.isString() && newData.val().length < 3200\"\n        }\n      }\n    }\n  }\n}";
+var GRULES="{\n  \"rules\": {\n    \"rooms\": {\n      \"$room\": {\n        \".read\": true,\n        \"$uid\": {\n          \".write\": true,\n          \".validate\": \"newData.hasChildren(['n','la','lo','s']) && newData.child('n').isString() && newData.child('n').val().length <= 24 && newData.child('la').isNumber() && newData.child('lo').isNumber()\"\n        }\n      }\n    },\n    \"routes\": {\n      \"$room\": {\n        \".read\": true,\n        \".write\": true,\n        \".validate\": \"newData.hasChildren(['p','h']) && newData.child('p').isString() && newData.child('p').val().length < 90000\"\n      }\n    },\n    \"avatars\": {\n      \"$room\": {\n        \".read\": true,\n        \"$uid\": {\n          \".write\": true,\n          \".validate\": \"newData.isString() && newData.val().length < 3200\"\n        }\n      }\n    },\n    \"tracks\": {\n      \"$room\": {\n        \".read\": true,\n        \".write\": true,\n        \"$uid\": {\n          \"m\": { \".validate\": \"newData.hasChildren(['n'])\" },\n          \"c\": { \"$k\": { \".validate\": \"newData.isString() && newData.val().length < 9000\" } }\n        }\n      }\n    }\n  }\n}";
 function myUid(){var u=LS.get("tcc.uid");if(!u){u=Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);LS.set("tcc.uid",u)}return u}
 function fbBase(){var u=(S.fbUrl||(window.TCC_CONFIG&&window.TCC_CONFIG.fbUrl)||"").trim();return u.replace(/\/+$/,"")}
 function colorOf(id){var h=0;for(var i=0;i<id.length;i++)h=(h*31+id.charCodeAt(i))>>>0;return FCOL[h%FCOL.length]}
@@ -1228,7 +1229,7 @@ async function gSyncRoute(){
 }
 async function gCycle(){
   if(!grp.on||grp.busy)return;grp.busy=true;
-  try{try{await gSyncAv()}catch(e){}await gPush();try{await gSyncRoute()}catch(e){}await gPoll()}finally{grp.busy=false}
+  try{try{await gSyncAv()}catch(e){}await gPush();try{await gSyncRoute()}catch(e){}try{await histFlush()}catch(e){}await gPoll()}finally{grp.busy=false}
   renderGroup();drawAll();
 }
 function gLoop(){clearTimeout(grp.timer);if(!grp.on)return;gCycle().then(function(){grp.timer=setTimeout(gLoop,5000)})}
@@ -1296,6 +1297,152 @@ function leaveGroup(){
   gDelMine(grp.room)
   grp.on=false;grp.friends=[];grp.trails={};clearTimeout(grp.timer);S.gOn=false;save();restoreOwn();renderGroup();drawAll();
 }
+/* ===== ประวัติเส้นทาง (log ย้อนหลัง) + เล่นย้อนหลัง ===== */
+var HQ={pts:[],last:null,lastFlush:0,metaKey:"",err:"",room:""};
+function hqLoad(){try{var o=JSON.parse(LS.get("tcc.hq")||"null");if(o&&o.room&&Array.isArray(o.pts)){HQ.room=o.room;HQ.pts=o.pts}}catch(e){}}
+function hqSave(){LS.set("tcc.hq",JSON.stringify({room:HQ.room,pts:HQ.pts.slice(-3000)}))}
+hqLoad();
+function histRec(){
+  if(!grp.on||S.gView||!S.gShare||!gpsFix||!route)return;
+  if(HQ.room!==grp.room){HQ.room=grp.room;HQ.pts=[];HQ.last=null}
+  var f=gpsFix,L=HQ.last;
+  if(f.acc>80)return; // สัญญาณหยาบเกินไปไม่เก็บ
+  if(L){var dtS=(f.t-L[0])/1000,dm=Math.hypot((f.lat-L[1])*111320,(f.lon-L[2])*111320*Math.cos(f.lat*Math.PI/180));
+    if(!(dtS>=30&&dm>=6)&&dm<20&&dtS<120)return; if(dtS<5)return}
+  var p=[f.t,Math.round(f.lat*1e5)/1e5,Math.round(f.lon*1e5)/1e5,(!route.sample&&gpsKm!=null)?Math.round(gpsKm*100)/100:null];
+  HQ.pts.push(p);HQ.last=p;hqSave();
+}
+function hqEnc(pts){ // ชุดจุด -> สตริงสั้น: t0|lat0,lon0|dt,dla,dlo,km;...
+  var a=pts[0],t=a[0],la=Math.round(a[1]*1e5),lo=Math.round(a[2]*1e5),o=[];
+  for(var i=0;i<pts.length;i++){var p=pts[i],pla=Math.round(p[1]*1e5),plo=Math.round(p[2]*1e5);
+    o.push(Math.round((p[0]-t)/1000).toString(36)+","+(pla-la).toString(36)+","+(plo-lo).toString(36)+","+(p[3]==null?"":Math.round(p[3]*100).toString(36)));
+    t=p[0];la=pla;lo=plo}
+  return a[0].toString(36)+"|"+Math.round(a[1]*1e5).toString(36)+","+Math.round(a[2]*1e5).toString(36)+"|"+o.join(";")}
+function hqDec(s){
+  if(typeof s!=="string")return[];var m=s.split("|");if(m.length!==3)return[];
+  var t=parseInt(m[0],36),ll=m[1].split(","),la=parseInt(ll[0],36),lo=parseInt(ll[1],36),out=[];
+  if(!isFinite(t)||!isFinite(la)||!isFinite(lo))return[];
+  m[2].split(";").forEach(function(r){var q=r.split(",");if(q.length<3)return;var dt=parseInt(q[0],36),dla=parseInt(q[1],36),dlo=parseInt(q[2],36);
+    if(!isFinite(dt)||!isFinite(dla)||!isFinite(dlo))return;
+    t+=dt*1000;la+=dla;lo+=dlo;var k=q[3]?parseInt(q[3],36)/100:null;out.push([t,la/1e5,lo/1e5,isFinite(k)?k:null])});
+  return out}
+async function histFlush(force){
+  if(!grp.on||S.gView||!HQ.pts.length||HQ.room!==grp.room)return;
+  var now=Date.now();if(!force&&now-HQ.lastFlush<300000)return;
+  HQ.lastFlush=now;
+  var base=fbBase()+"/tracks/"+grp.room+"/"+myUid();
+  try{
+    var mk=grp.name+"|"+(isCustom()?cuHash(S.gCu):myAv());
+    if(HQ.metaKey!==mk){
+      var mr=await fetchT(base+"/m.json",{method:"PUT",body:JSON.stringify({n:grp.name,av:(isCustom()?CUI:myAv()),cu:(isCustom()?S.gCu:null)}),headers:{"Content-Type":"application/json"}},10000);
+      if(!mr.ok)throw new Error("HTTP "+mr.status);HQ.metaKey=mk}
+    var n=Math.min(HQ.pts.length,300),chunk=HQ.pts.slice(0,n),key="c"+chunk[0][0].toString(36);
+    var r=await fetchT(base+"/c/"+key+".json",{method:"PUT",body:JSON.stringify(hqEnc(chunk)),headers:{"Content-Type":"application/json"}},10000);
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    HQ.pts.splice(0,n);hqSave();HQ.err="";
+    if(HQ.pts.length)HQ.lastFlush=0; // ยังเหลือ ส่งต่อรอบหน้า
+  }catch(e){HQ.err=(e&&/HTTP (401|403)/.test(e.message))?"บันทึกประวัติไม่ได้: ต้องอัปเดตกฎ (rules) ใน Firebase":"บันทึกประวัติไม่ได้ (ไม่มีสัญญาณ) เก็บไว้ในเครื่องก่อน"}
+}
+document.addEventListener("visibilitychange",function(){if(document.hidden&&grp.on)histFlush(true).catch(function(){})});
+
+/* ----- หน้าเล่นย้อนหลัง ----- */
+var RP={open:false,data:[],t0:0,t1:0,T:0,play:false,speed:60,raf:0,last:0,proj:null,hasRoute:false};
+function rpLoad(){
+  var m=$("rpMsg");m.textContent="กำลังโหลดประวัติ…";m.className="msg";
+  return histFlush(true).catch(function(){}).then(function(){return fetchT(fbBase()+"/tracks/"+grp.room+".json",{cache:"no-store"},15000)}).then(function(r){
+    if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}).then(function(j){
+    var ids=Object.keys(j||{}),colors=assignColors(ids),list=[];
+    ids.forEach(function(id){var u=j[id]||{},mm=u.m||{},pts=[];
+      Object.keys(u.c||{}).sort().forEach(function(k){hqDec(u.c[k]).forEach(function(p){pts.push(p)})});
+      pts.sort(function(a,b){return a[0]-b[0]});
+      var dd=[];pts.forEach(function(p){if(!dd.length||p[0]>dd[dd.length-1][0])dd.push(p)});pts=dd;
+      if(pts.length<2)return;
+      var av=(mm.av===CUI&&typeof mm.cu==="string"&&cuDecode(mm.cu))?cuDecode(mm.cu):avIdx(mm.av,id);
+      if(route){var prev=0;pts.forEach(function(p){if(p[3]==null){var q=nearestIn(p[1],p[2],0,route.n);p[3]=q.off<300?q.km:null}})}
+      list.push({id:id,name:String(mm.n||"?").slice(0,24),av:av,color:colors[id],pts:pts,me:id===myUid()})});
+    RP.data=list;
+    if(!list.length){m.className="msg";m.textContent="ยังไม่มีประวัติในกลุ่มนี้ (ประวัติจะถูกบันทึกจากเครื่องของคนที่เปิดแอปและแชร์ตำแหน่งระหว่างวิ่ง)";return}
+    RP.t0=Math.min.apply(null,list.map(function(x){return x.pts[0][0]}));RP.t1=Math.max.apply(null,list.map(function(x){return x.pts[x.pts.length-1][0]}));
+    RP.T=RP.t0;m.textContent="";rpBuildProj();rpSplits();rpDraw();
+  }).catch(function(e){m.className="msg err";m.textContent=(e&&/HTTP (401|403)/.test(e.message))?"อ่านประวัติไม่ได้: ต้องอัปเดตกฎ (rules) ใน Firebase ก่อน":"โหลดประวัติไม่ได้ (ไม่มีสัญญาณ)"});
+}
+function rpBuildProj(){
+  var la=[],lo=[];
+  if(route){RP.hasRoute=true;for(var i=0;i<route.n;i+=3){la.push(route.lat[i]);lo.push(route.lon[i])}}
+  RP.data.forEach(function(d){d.pts.forEach(function(p,i){if(i%3===0){la.push(p[1]);lo.push(p[2])}})});
+  var a=Math.min.apply(null,la),b=Math.max.apply(null,la),c=Math.min.apply(null,lo),e=Math.max.apply(null,lo);
+  RP.box={la0:a,la1:b,lo0:c,lo1:e,k:Math.cos((a+b)/2*Math.PI/180)}}
+function rpXY(lat,lon,W,H){var B=RP.box,pad=34,w=(B.lo1-B.lo0)*B.k||1e-5,h=(B.la1-B.la0)||1e-5,s=Math.min((W-pad*2)/w,(H-pad*2)/h);
+  return [W/2+((lon-(B.lo0+B.lo1)/2)*B.k)*s,H/2-(lat-(B.la0+B.la1)/2)*s]}
+function rpAt(d,T){var p=d.pts;if(T<p[0][0])return null;var n=p.length;if(T>=p[n-1][0])return {lat:p[n-1][1],lon:p[n-1][2],km:p[n-1][3],end:true,i:n-1};
+  var lo=0,hi=n-1;while(hi-lo>1){var m=(lo+hi)>>1;if(p[m][0]<=T)lo=m;else hi=m}
+  var a=p[lo],b=p[hi],f=(T-a[0])/(b[0]-a[0]);if(b[0]-a[0]>600000)f=0; // ขาดหายนานกว่า 10 นาที ค้างจุดเดิม
+  return {lat:a[1]+(b[1]-a[1])*f,lon:a[2]+(b[2]-a[2])*f,km:(a[3]!=null&&b[3]!=null)?a[3]+(b[3]-a[3])*f:a[3],end:false,i:lo,gap:b[0]-a[0]>600000}}
+function rpDraw(){
+  var cv=$("rpCv"),r=cv.getBoundingClientRect(),dpr=window.devicePixelRatio||1,W=Math.max(100,r.width),H=Math.max(100,r.height);
+  if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)}
+  var c=cv.getContext("2d");c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,W,H);c.fillStyle=css("--surface");c.fillRect(0,0,W,H);
+  if(!RP.data.length||!RP.box){return}
+  c.lineJoin="round";c.lineCap="round";
+  if(route){c.beginPath();for(var i=0;i<route.n;i+=2){var q=rpXY(route.lat[i],route.lon[i],W,H);if(i)c.lineTo(q[0],q[1]);else c.moveTo(q[0],q[1])}
+    c.lineWidth=5;c.strokeStyle=css("--line");c.stroke();
+    cps.forEach(function(cp){var j=idxAt(Math.min(cp.km,route.total/1000)),q=rpXY(route.lat[j],route.lon[j],W,H);c.beginPath();c.arc(q[0],q[1],4,0,6.283);c.fillStyle=css("--ink");c.fill();c.font="600 10px "+css("--font");c.textAlign="left";c.fillStyle=css("--muted");c.fillText(cp.name,q[0]+6,q[1]-6)})}
+  var marks=[],info=[];
+  RP.data.forEach(function(d){
+    var p=d.pts,cur=rpAt(d,RP.T);if(!cur)return;
+    c.beginPath();var pen=false,prevT=0;
+    for(var i=0;i<=cur.i&&i<p.length;i++){if(p[i][0]>RP.T)break;var q=rpXY(p[i][1],p[i][2],W,H);
+      if(!pen||p[i][0]-prevT>600000){c.moveTo(q[0],q[1]);pen=true}else c.lineTo(q[0],q[1]);prevT=p[i][0]}
+    var e=rpXY(cur.lat,cur.lon,W,H);c.lineTo(e[0],e[1]);c.lineWidth=3;c.strokeStyle=d.color;c.globalAlpha=.9;c.stroke();c.globalAlpha=1;
+    marks.push({d:d,x:e[0],y:e[1],stale:cur.end||cur.gap});info.push({d:d,km:cur.km,end:cur.end})});
+  marks.forEach(function(m){marker8(c,m.x,m.y,m.d.av,m.d.color,m.d.name,m.stale)});
+  $("rpTime").textContent=hhmm(RP.T)+" น. · ผ่านไป "+Math.floor((RP.T-RP.t0)/3600000)+":"+pad(Math.floor((RP.T-RP.t0)/60000)%60);
+  var s=$("rpSl");if(document.activeElement!==s)s.value=Math.round((RP.T-RP.t0)/Math.max(1,RP.t1-RP.t0)*1000);
+  var box=$("rpList"),h="";info.sort(function(a,b){return (b.km==null?-1:b.km)-(a.km==null?-1:a.km)});
+  if(box._k!==info.map(function(x){return x.d.id}).join()){box._k=info.map(function(x){return x.d.id}).join();box.textContent=""}
+  box.textContent="";
+  info.forEach(function(x){var r=document.createElement("div");r.className="rprow";var dot=document.createElement("i");dot.className="gdot";dot.style.background=x.d.color;dot.appendChild(spriteCanvas(x.d.av,22));
+    var n=document.createElement("b");n.textContent=x.d.name+(x.d.me?" (ฉัน)":"");var k=document.createElement("span");k.className="mono";k.textContent=(x.km!=null?x.km.toFixed(1)+" กม.":"-")+(x.end?" · จบข้อมูล":"");
+    r.appendChild(dot);r.appendChild(n);r.appendChild(k);box.appendChild(r)});
+}
+function rpSplits(){
+  var box=$("rpSplit");box.textContent="";if(!RP.data.length||!cps.length)return;
+  var sorted=cps.slice().sort(function(a,b){return a.km-b.km});
+  var tb=document.createElement("table");tb.className="rptb";
+  var hd=document.createElement("tr");hd.appendChild(document.createElement("th")).textContent="จุด";
+  RP.data.forEach(function(d){var th=document.createElement("th");th.textContent=d.name;th.style.color=d.color;hd.appendChild(th)});tb.appendChild(hd);
+  sorted.forEach(function(cp){
+    var tr=document.createElement("tr"),th=document.createElement("th");th.textContent=cp.name+" ("+cp.km+")";tr.appendChild(th);
+    var times=RP.data.map(function(d){var p=d.pts;for(var i=1;i<p.length;i++){if(p[i][3]!=null&&p[i][3]>=cp.km){var a=p[i-1],b=p[i];
+          if(a[3]!=null&&b[3]>a[3]&&b[0]-a[0]<=600000)return a[0]+(b[0]-a[0])*(cp.km-a[3])/(b[3]-a[3]);return b[0]}}return null});
+    var best=Math.min.apply(null,times.filter(function(x){return x!=null}).concat([Infinity]));
+    times.forEach(function(t){var td=document.createElement("td");td.className="mono";
+      if(t==null)td.textContent="-";else{td.textContent=hhmm(t);if(t-best>=60000){var s=document.createElement("small");s.textContent=" +"+Math.round((t-best)/60000)+"น.";td.appendChild(s)}}tr.appendChild(td)});
+    tb.appendChild(tr)});
+  box.appendChild(tb)}
+function rpTick(ts){
+  if(!RP.play||!RP.open)return;
+  var dt=RP.last?Math.min(200,ts-RP.last):16;RP.last=ts;
+  RP.T+=dt*RP.speed;if(RP.T>=RP.t1){RP.T=RP.t1;rpPlay(false)}
+  rpDraw();RP.raf=requestAnimationFrame(rpTick)}
+function rpPlay(on){RP.play=on;RP.last=0;$("rpPlay").textContent=on?"⏸ หยุด":"▶ เล่น";cancelAnimationFrame(RP.raf);
+  if(on){if(RP.T>=RP.t1)RP.T=RP.t0;RP.raf=requestAnimationFrame(rpTick)}}
+function rpOpen(){
+  if(!grp.on||!fbBase())return;RP.open=true;$("rpFull").hidden=false;$("rpTitle").textContent="เล่นย้อนหลัง · กลุ่ม "+grp.room;
+  RP.data=[];rpDraw();rpLoad()}
+function rpClose(){rpPlay(false);RP.open=false;$("rpFull").hidden=true}
+$("gReplay").onclick=rpOpen;$("rpClose").onclick=rpClose;$("rpPlay").onclick=function(){rpPlay(!RP.play)};
+$("rpSl").oninput=function(e){RP.T=RP.t0+(RP.t1-RP.t0)*(+e.target.value)/1000;rpDraw()};
+Array.prototype.forEach.call(document.querySelectorAll("[data-rps]"),function(b){b.onclick=function(){RP.speed=+b.getAttribute("data-rps");
+  Array.prototype.forEach.call(document.querySelectorAll("[data-rps]"),function(x){x.classList.toggle("primary",x===b)})}});
+window.addEventListener("resize",function(){if(RP.open)rpDraw()});
+$("gHistDel").onclick=function(){
+  if(!grp.on||S.gView)return;
+  if(!confirm("ลบประวัติเส้นทางของทั้งกลุ่ม "+grp.room+" ? ทุกคนจะดูย้อนหลังไม่ได้อีก"))return;
+  fetchT(fbBase()+"/tracks/"+grp.room+".json",{method:"DELETE"},10000).then(function(r){
+    var m=$("gMsg");if(r.ok){HQ.pts=[];HQ.last=null;HQ.metaKey="";hqSave();m.className="msg";m.textContent="ลบประวัติของกลุ่มแล้ว"}else{m.className="msg err";m.textContent="ลบไม่ได้ (HTTP "+r.status+")"}})
+   .catch(function(){var m=$("gMsg");m.className="msg err";m.textContent="ลบไม่ได้ (ไม่มีสัญญาณ)"})};
+
 $("gJoin").onclick=joinGroup;$("gLeave").onclick=leaveGroup;
 $("gNew").onclick=function(){var a="ABCDEFGHJKLMNPQRSTUVWXYZ23456789",s="";for(var i=0;i<6;i++)s+=a.charAt(Math.floor(Math.random()*a.length));$("gRoom").value=s};
 $("gView").onchange=function(e){S.gView=e.target.checked;save();

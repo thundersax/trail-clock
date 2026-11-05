@@ -1,6 +1,6 @@
 /* Service worker: แอปเปิดได้ออฟไลน์ + เก็บแผนที่ที่เคยดู
    เพิ่มเลขเวอร์ชันนี้ทุกครั้งที่แก้ไฟล์แอป เพื่อให้เครื่องอัปเดต */
-var VER = "tcc-v15";
+var VER = "tcc-v18";
 var SHELL = VER + "-shell";
 var TILES = "tcc-tiles-v1"; // ชื่อเดียวกับใน app.js
 var FILES = ["./", "index.html", "app.css", "app.js", "config.js", "manifest.webmanifest",

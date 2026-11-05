@@ -137,7 +137,7 @@
       <div class="avprev" id="avPrev"></div>
       <div class="avpick" id="avPick" role="group" aria-label="เลือกตัวละคร"></div>
       <div class="row">
-        <button class="btn" id="avUp" type="button">อัปโหลดรูปทำเป็นตัวละคร 8 บิต</button>
+        <button class="btn" id="avUp" type="button">อัปโหลดรูปทำเป็นตัวละคร 16 บิต</button>
         <label class="chk"><input type="checkbox" id="avBg" checked> ลบพื้นหลัง (ไม่ติ๊ก = ตัดเป็นวงรี)</label>
       </div>
       <input type="file" id="avFile" accept="image/*" hidden>
@@ -151,6 +151,7 @@
       </div>
       <label class="chk"><input type="checkbox" id="gShare" checked> แชร์ตำแหน่งของฉันให้คนในกลุ่ม</label>
       <label class="chk"><input type="checkbox" id="gView"> โหมดผู้ชม: แค่ดูเพื่อนวิ่ง ไม่ต้องมีไฟล์ GPX หรือเปิด GPS (ไม่ส่งตำแหน่งของฉัน)</label>
+      <div class="row"><button class="btn primary" id="gReplay">▶ เล่นย้อนหลัง (ทั้งกลุ่ม)</button><button class="btn danger" id="gHistDel">ลบประวัติกลุ่ม</button></div>
       <div class="msg" id="gMsg"></div>
       <p class="note">ใครมีรหัสกลุ่มก็เห็นตำแหน่งของคนในกลุ่มได้ ส่งรหัสเฉพาะคนที่ไว้ใจ ทุกคนต้องใช้ไฟล์ GPX เดียวกัน และเปิด GPS ที่แท็บตั้งค่า ตำแหน่งส่งผ่านอินเทอร์เน็ต ถ้าไม่มีสัญญาณ เพื่อนจะเห็นตำแหน่งล่าสุดและเวลาที่เห็นล่าสุด พอสัญญาณกลับมาแอปส่งตำแหน่งปัจจุบันให้เอง</p>
     </section>
@@ -260,6 +261,14 @@
   </div>
   <canvas id="prof3"></canvas>
   <div class="sbar" id="sb3" aria-label="แถบเลื่อนกราฟ"><div class="sthumb"></div></div>
+</div>
+<div id="rpFull" class="pfull rp" hidden role="dialog" aria-label="เล่นย้อนหลัง">
+  <div class="pfbar"><div class="mono pfinfo" id="rpTitle"></div><button class="btn primary" id="rpClose">ปิด</button></div>
+  <canvas id="rpCv"></canvas>
+  <div class="rpctl"><button class="btn" id="rpPlay">▶ เล่น</button><input type="range" id="rpSl" min="0" max="1000" value="0" aria-label="เวลา"><span class="mono" id="rpTime"></span></div>
+  <div class="row rpsp"><span class="label">ความเร็ว</span><button class="btn" data-rps="1">×1</button><button class="btn" data-rps="10">×10</button><button class="btn primary" data-rps="60">×60</button><button class="btn" data-rps="300">×300</button><button class="btn" data-rps="1200">×1200</button></div>
+  <div class="msg" id="rpMsg"></div>
+  <div class="rpscroll"><div id="rpList"></div><div id="rpSplit" class="rpsplit"></div></div>
 </div>
 <script src="config.js"></script>
 <script src="app.js"></script>

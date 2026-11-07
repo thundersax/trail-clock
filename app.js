@@ -165,8 +165,11 @@ function parseGpx(text,name){
 function setup(cv){var r=cv.getBoundingClientRect(),d=window.devicePixelRatio||1;
   cv.width=Math.max(1,Math.round(r.width*d));cv.height=Math.max(1,Math.round(r.height*d));
   var c=cv.getContext("2d");c.setTransform(d,0,0,d,0,0);return {c:c,w:r.width,h:r.height}}
-var raf=0;
-function reqDraw(){if(raf)return;raf=requestAnimationFrame(function(){raf=0;if(mode3d)draw3d();else drawMap()})}
+var raf=0,RPON=false,RPREC=null;
+function swapOwn(f){var sv=[gpsFix,trail,grp.friends];gpsFix=null;trail=[];grp.friends=[];try{f()}finally{gpsFix=sv[0];trail=sv[1];grp.friends=sv[2]}}
+function drawMap(){if(RPON)swapOwn(drawMap0);else drawMap0()}
+function draw3d(){if(RPON)swapOwn(draw3d0);else draw3d0()}
+function reqDraw(){if(raf)return;raf=requestAnimationFrame(function(){raf=0;if(mode3d)draw3d();else drawMap();if(RPREC)rpRecFrame()})}
 
 /* ================= elevation profile ================= */
 var pv={a:0,b:1};
@@ -256,7 +259,7 @@ function zoomAt(px,py,dz){
 function setFollow(on){follow=on;$("zFollow").setAttribute("aria-pressed",on?"true":"false");if(on)centerRunner()}
 function centerRunner(){if(!route)return;var i=idxAt(runnerKm());if(gpsFix){MV.u=gpsFix.u;MV.v=gpsFix.v}else{MV.u=route.mu[i];MV.v=route.mv[i]}if(MV.z<14)MV.z=14.5;reqDraw()}
 
-function drawMap(){
+function drawMap0(){
   var cv=$("map");if(cv.offsetParent===null)return;
   var s=setup(cv),c=s.c,W=s.w,H=s.h;MV.w=W;MV.h=H;
   c.fillStyle=css("--bg");c.fillRect(0,0,W,H);
@@ -312,7 +315,7 @@ function drawMap(){
   c.beginPath();c.arc(X(0),Y(0),5,0,6.283);c.fillStyle=css("--ok");c.fill();c.lineWidth=2;c.strokeStyle=css("--surface");c.stroke();
   // ตำแหน่งเรา
   var ri=idxAt(runnerKm());
-  c.beginPath();c.arc(X(ri),Y(ri),13,0,6.283);c.fillStyle=css("--accent");c.globalAlpha=.25;c.fill();c.globalAlpha=1;
+  c.beginPath();c.arc(X(ri),Y(ri),(RPON?.01:13),0,6.283);c.fillStyle=css("--accent");c.globalAlpha=.25;c.fill();c.globalAlpha=1;
   if(gpsFix){c.beginPath();c.arc(X(ri),Y(ri),7,0,6.283);c.fillStyle=css("--accent");c.fill();c.lineWidth=2.5;c.strokeStyle=css("--surface");c.stroke()}else ownMarker(c,X(ri),Y(ri));
   // รอยทางที่เดินจริง
   if(trail.length>1){
@@ -335,6 +338,7 @@ function drawMap(){
     c.beginPath();c.arc(gx,gy,ar,0,6.283);c.fillStyle=css("--gps");c.globalAlpha=.16;c.fill();c.globalAlpha=1;
     ownMarker(c,gx,gy);
   }
+  if(RPON)rpOver2d(c,W,H,ws);
   // รอยทางของเพื่อน
   grp.friends.forEach(function(f){var tr=grp.trails[f.id];if(!tr||tr.length<2)return;
     c.beginPath();tr.forEach(function(q,k){var x=W/2+(q[0]-MV.u)*ws,y=H/2+(q[1]-MV.v)*ws;k?c.lineTo(x,y):c.moveTo(x,y)});
@@ -530,7 +534,7 @@ function updateColors3d(ri){
 }
 
 /* ---- วาด 3D ---- */
-function draw3d(){
+function draw3d0(){
   var ov=$("map3d");if(ov.offsetParent===null||!route)return;
   if(G.routeFor!==route)buildRoute3d();
   var gl=G.gl,r=ov.getBoundingClientRect(),W=r.width,H=r.height,dpr=Math.min(window.devicePixelRatio||1,2);
@@ -623,10 +627,11 @@ function draw3d(){
       ownMarker(c,gp[0],gp[1]);
     }
   }
-  if(rr){c.beginPath();c.arc(rr[0],rr[1],13,0,6.283);c.fillStyle=css("--accent");c.globalAlpha=.25;c.fill();c.globalAlpha=1;
+  if(rr){c.beginPath();c.arc(rr[0],rr[1],(RPON?.01:13),0,6.283);c.fillStyle=css("--accent");c.globalAlpha=.25;c.fill();c.globalAlpha=1;
     if(gpsFix){c.beginPath();c.arc(rr[0],rr[1],7,0,6.283);c.fillStyle=css("--accent");c.fill();c.lineWidth=2.5;c.strokeStyle=css("--surface");c.stroke()}else ownMarker(c,rr[0],rr[1])}
   grp.friends.forEach(function(f){
     var fp=proj((f.u-G.u0)*G.mpu,-(f.v-G.v0)*G.mpu,zOf(clamp(f.ni||0,0,route.n)));if(fp)friendMarker(c,fp[0],fp[1],f)});
+  if(RPON)rpOver3d(c,W,H,proj,zOf);
   // สถานะมุมกล้อง + เครดิต
   c.font="10px "+css("--font");c.textBaseline="alphabetic";
   var info="3D · เอียง "+Math.round(cam.p)+"° · สูง ×"+ex,at=[attrText(),G.demOn?DEM_ATTR:""].filter(Boolean).join(" · ");
@@ -1135,7 +1140,7 @@ function marker8(c,x,y,av,color,name,stale){
   if(name){c.font="600 11px "+css("--font");c.textAlign="center";c.textBaseline="alphabetic";c.lineWidth=3;c.strokeStyle=css("--surface");c.strokeText(name,x,y+19);c.fillStyle=css("--ink");c.fillText(name,x,y+19)}
   c.restore()}
 function friendMarker(c,x,y,f){marker8(c,x,y,f.av,f.color,f.name,f.stale)}
-function ownMarker(c,x,y){marker8(c,x,y,myAv(),(grp.on&&!S.gView&&grp.myColor)?grp.myColor:css("--gps"),(grp.on&&grp.name&&!S.gView)?grp.name:"",false)}
+function ownMarker(c,x,y){if(RPON)return;marker8(c,x,y,myAv(),(grp.on&&!S.gView&&grp.myColor)?grp.myColor:css("--gps"),(grp.on&&grp.name&&!S.gView)?grp.name:"",false)}
 function spriteAt(c,i,x,yPt,sz){var d=spriteDim(spriteImg(i),sz),by=Math.max(yPt-4,d.h+2);drawSprite(c,i,x,by,sz)}
 
 async function gPush(){
@@ -1345,8 +1350,8 @@ async function histFlush(force){
 }
 document.addEventListener("visibilitychange",function(){if(document.hidden&&grp.on)histFlush(true).catch(function(){})});
 
-/* ----- หน้าเล่นย้อนหลัง ----- */
-var RP={open:false,data:[],t0:0,t1:0,T:0,play:false,speed:60,raf:0,last:0,proj:null,hasRoute:false};
+/* ----- หน้าเล่นย้อนหลัง (ใช้แผนที่เดิม 2D/ดาวเทียม/3D) ----- */
+var RP={open:false,data:[],t0:0,t1:0,T:0,play:false,speed:60,raf:0,last:0,cs:[],ph:null,mv:null,rec:null};
 function rpLoad(){
   var m=$("rpMsg");m.textContent="กำลังโหลดประวัติ…";m.className="msg";
   return histFlush(true).catch(function(){}).then(function(){return fetchT(fbBase()+"/tracks/"+grp.room+".json",{cache:"no-store"},15000)}).then(function(r){
@@ -1363,48 +1368,54 @@ function rpLoad(){
     RP.data=list;
     if(!list.length){m.className="msg";m.textContent="ยังไม่มีประวัติในกลุ่มนี้ (ประวัติจะถูกบันทึกจากเครื่องของคนที่เปิดแอปและแชร์ตำแหน่งระหว่างวิ่ง)";return}
     RP.t0=Math.min.apply(null,list.map(function(x){return x.pts[0][0]}));RP.t1=Math.max.apply(null,list.map(function(x){return x.pts[x.pts.length-1][0]}));
-    RP.T=RP.t0;m.textContent="";rpBuildProj();rpSplits();rpDraw();
+    RP.T=RP.t0;m.textContent="";rpSplits();rpFit();rpDraw();
   }).catch(function(e){m.className="msg err";m.textContent=(e&&/HTTP (401|403)/.test(e.message))?"อ่านประวัติไม่ได้: ต้องอัปเดตกฎ (rules) ใน Firebase ก่อน":"โหลดประวัติไม่ได้ (ไม่มีสัญญาณ)"});
 }
-function rpBuildProj(){
-  var la=[],lo=[];
-  if(route){RP.hasRoute=true;for(var i=0;i<route.n;i+=3){la.push(route.lat[i]);lo.push(route.lon[i])}}
-  RP.data.forEach(function(d){d.pts.forEach(function(p,i){if(i%3===0){la.push(p[1]);lo.push(p[2])}})});
-  var a=Math.min.apply(null,la),b=Math.max.apply(null,la),c=Math.min.apply(null,lo),e=Math.max.apply(null,lo);
-  RP.box={la0:a,la1:b,lo0:c,lo1:e,k:Math.cos((a+b)/2*Math.PI/180)}}
-function rpXY(lat,lon,W,H){var B=RP.box,pad=34,w=(B.lo1-B.lo0)*B.k||1e-5,h=(B.la1-B.la0)||1e-5,s=Math.min((W-pad*2)/w,(H-pad*2)/h);
-  return [W/2+((lon-(B.lo0+B.lo1)/2)*B.k)*s,H/2-(lat-(B.la0+B.la1)/2)*s]}
 function rpAt(d,T){var p=d.pts;if(T<p[0][0])return null;var n=p.length;if(T>=p[n-1][0])return {lat:p[n-1][1],lon:p[n-1][2],km:p[n-1][3],end:true,i:n-1};
   var lo=0,hi=n-1;while(hi-lo>1){var m=(lo+hi)>>1;if(p[m][0]<=T)lo=m;else hi=m}
   var a=p[lo],b=p[hi],f=(T-a[0])/(b[0]-a[0]);if(b[0]-a[0]>600000)f=0; // ขาดหายนานกว่า 10 นาที ค้างจุดเดิม
   return {lat:a[1]+(b[1]-a[1])*f,lon:a[2]+(b[2]-a[2])*f,km:(a[3]!=null&&b[3]!=null)?a[3]+(b[3]-a[3])*f:a[3],end:false,i:lo,gap:b[0]-a[0]>600000}}
+function rpFit(){
+  var u0=1,u1=0,v0=1,v1=0,cv=$("map"),i;
+  function add(u,v){if(u<u0)u0=u;if(u>u1)u1=u;if(v<v0)v0=v;if(v>v1)v1=v}
+  if(route)for(i=0;i<=route.n;i+=3)add(route.mu[i],route.mv[i]);
+  RP.data.forEach(function(d){d.pts.forEach(function(p,k){if(k%3===0)add((p[2]+180)/360,merc(p[1]))})});
+  if(u1<u0)return;
+  if(cv.clientWidth>0){MV.w=cv.clientWidth;MV.h=cv.clientHeight}
+  var du=Math.max(u1-u0,1e-6),dv=Math.max(v1-v0,1e-6);
+  MV.u=(u0+u1)/2;MV.v=(v0+v1)/2;MV.z=clamp(Math.log(Math.min(MV.w/(du*256),MV.h/(dv*256))*.86)/Math.LN2,3,17);reqDraw()}
 function rpDraw(){
-  var cv=$("rpCv"),r=cv.getBoundingClientRect(),dpr=window.devicePixelRatio||1,W=Math.max(100,r.width),H=Math.max(100,r.height);
-  if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)}
-  var c=cv.getContext("2d");c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,W,H);c.fillStyle=css("--surface");c.fillRect(0,0,W,H);
-  if(!RP.data.length||!RP.box){return}
-  c.lineJoin="round";c.lineCap="round";
-  if(route){c.beginPath();for(var i=0;i<route.n;i+=2){var q=rpXY(route.lat[i],route.lon[i],W,H);if(i)c.lineTo(q[0],q[1]);else c.moveTo(q[0],q[1])}
-    c.lineWidth=5;c.strokeStyle=css("--line");c.stroke();
-    cps.forEach(function(cp){var j=idxAt(Math.min(cp.km,route.total/1000)),q=rpXY(route.lat[j],route.lon[j],W,H);c.beginPath();c.arc(q[0],q[1],4,0,6.283);c.fillStyle=css("--ink");c.fill();c.font="600 10px "+css("--font");c.textAlign="left";c.fillStyle=css("--muted");c.fillText(cp.name,q[0]+6,q[1]-6)})}
-  var marks=[],info=[];
-  RP.data.forEach(function(d){
-    var p=d.pts,cur=rpAt(d,RP.T);if(!cur)return;
-    c.beginPath();var pen=false,prevT=0;
-    for(var i=0;i<=cur.i&&i<p.length;i++){if(p[i][0]>RP.T)break;var q=rpXY(p[i][1],p[i][2],W,H);
-      if(!pen||p[i][0]-prevT>600000){c.moveTo(q[0],q[1]);pen=true}else c.lineTo(q[0],q[1]);prevT=p[i][0]}
-    var e=rpXY(cur.lat,cur.lon,W,H);c.lineTo(e[0],e[1]);c.lineWidth=3;c.strokeStyle=d.color;c.globalAlpha=.9;c.stroke();c.globalAlpha=1;
-    marks.push({d:d,x:e[0],y:e[1],stale:cur.end||cur.gap});info.push({d:d,km:cur.km,end:cur.end})});
-  marks.forEach(function(m){marker8(c,m.x,m.y,m.d.av,m.d.color,m.d.name,m.stale)});
-  $("rpTime").textContent=hhmm(RP.T)+" น. · ผ่านไป "+Math.floor((RP.T-RP.t0)/3600000)+":"+pad(Math.floor((RP.T-RP.t0)/60000)%60);
-  var s=$("rpSl");if(document.activeElement!==s)s.value=Math.round((RP.T-RP.t0)/Math.max(1,RP.t1-RP.t0)*1000);
-  var box=$("rpList"),h="";info.sort(function(a,b){return (b.km==null?-1:b.km)-(a.km==null?-1:a.km)});
-  if(box._k!==info.map(function(x){return x.d.id}).join()){box._k=info.map(function(x){return x.d.id}).join();box.textContent=""}
-  box.textContent="";
-  info.forEach(function(x){var r=document.createElement("div");r.className="rprow";var dot=document.createElement("i");dot.className="gdot";dot.style.background=x.d.color;dot.appendChild(spriteCanvas(x.d.av,22));
-    var n=document.createElement("b");n.textContent=x.d.name+(x.d.me?" (ฉัน)":"");var k=document.createElement("span");k.className="mono";k.textContent=(x.km!=null?x.km.toFixed(1)+" กม.":"-")+(x.end?" · จบข้อมูล":"");
-    r.appendChild(dot);r.appendChild(n);r.appendChild(k);box.appendChild(r)});
-}
+  RP.cs=[];
+  if(RP.data.length){
+    $("rpTime").textContent=hhmm(RP.T)+" น. · ผ่านไป "+Math.floor((RP.T-RP.t0)/3600000)+":"+pad(Math.floor((RP.T-RP.t0)/60000)%60);
+    var s=$("rpSl");if(document.activeElement!==s||true)s.value=Math.round((RP.T-RP.t0)/Math.max(1,RP.t1-RP.t0)*1000);
+    RP.data.forEach(function(d){var cur=rpAt(d,RP.T);if(cur)RP.cs.push({d:d,cur:cur})});
+    var info=RP.cs.slice().sort(function(a,b){return (b.cur.km==null?-1:b.cur.km)-(a.cur.km==null?-1:a.cur.km)});RP.info=info;
+    var box=$("rpList");box.textContent="";
+    info.forEach(function(x){var r=document.createElement("div");r.className="rprow";var dot=document.createElement("i");dot.className="gdot";dot.style.background=x.d.color;dot.appendChild(spriteCanvas(x.d.av,22));
+      var n=document.createElement("b");n.textContent=x.d.name+(x.d.me?" (ฉัน)":"");var k=document.createElement("span");k.className="mono";k.textContent=(x.cur.km!=null?x.cur.km.toFixed(1)+" กม.":"-")+(x.cur.end?" · จบข้อมูล":"");
+      r.appendChild(dot);r.appendChild(n);r.appendChild(k);box.appendChild(r)})}
+  reqDraw()}
+function rpIdx(cur){return cur.km!=null&&route?idxAt(clamp(cur.km,0,route.total/1000)):null}
+function rpPts(d,cur){ // จุดเส้นทางที่ผ่านมาแล้ว ตัดเส้นเมื่อขาดหาย
+  var out=[],p=d.pts,prev=0,seg=null;
+  for(var i=0;i<=cur.i&&i<p.length;i++){if(p[i][0]>RP.T)break;
+    if(!seg||p[i][0]-prev>600000){seg=[];out.push(seg)}seg.push(p[i]);prev=p[i][0]}
+  if(seg&&!cur.gap)seg.push([RP.T,cur.lat,cur.lon,cur.km]);else if(!seg)out.push([[RP.T,cur.lat,cur.lon,cur.km]]);
+  return out}
+function rpDrawAll(c,pf){
+  RP.cs.forEach(function(x){
+    rpPts(x.d,x.cur).forEach(function(seg){
+      if(seg.length<2)return;var step=Math.max(1,Math.ceil(seg.length/1200)),pp=[];
+      for(var k=0;k<seg.length;k+=step)pp.push(pf(seg[k][1],seg[k][2],seg[k][3]));pp.push(pf(seg[seg.length-1][1],seg[seg.length-1][2],seg[seg.length-1][3]));
+      var path=function(){var open=false;c.beginPath();pp.forEach(function(p){if(!p){open=false;return}open?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]);open=true})};
+      c.lineJoin="round";c.lineCap="round";path();c.strokeStyle=css("--surface");c.globalAlpha=.9;c.lineWidth=8;c.stroke();
+      path();c.strokeStyle=x.d.color;c.globalAlpha=1;c.lineWidth=5;c.stroke()})});
+  RP.cs.forEach(function(x){var p=pf(x.cur.lat,x.cur.lon,x.cur.km);if(p)marker8(c,p[0],p[1],x.d.av,x.d.color,x.d.name,x.cur.end||x.cur.gap)})}
+function rpOver2d(c,W,H,ws){rpDrawAll(c,function(lat,lon){return [W/2+((lon+180)/360-MV.u)*ws,H/2+(merc(lat)-MV.v)*ws]})}
+function rpOver3d(c,W,H,proj,zOf){var last=0;
+  rpDrawAll(c,function(lat,lon,km){var u=(lon+180)/360,v=merc(lat),k=km!=null?idxAt(clamp(km,0,route.total/1000)):last;last=k;
+    return proj((u-G.u0)*G.mpu,-(v-G.v0)*G.mpu,zOf(clamp(k,0,route.n)))})}
 function rpSplits(){
   var box=$("rpSplit");box.textContent="";if(!RP.data.length||!cps.length)return;
   var sorted=cps.slice().sort(function(a,b){return a.km-b.km});
@@ -1423,19 +1434,57 @@ function rpSplits(){
 function rpTick(ts){
   if(!RP.play||!RP.open)return;
   var dt=RP.last?Math.min(200,ts-RP.last):16;RP.last=ts;
-  RP.T+=dt*RP.speed;if(RP.T>=RP.t1){RP.T=RP.t1;rpPlay(false)}
+  RP.T+=dt*RP.speed;if(RP.T>=RP.t1){RP.T=RP.t1;rpPlay(false);if(RP.rec)setTimeout(function(){rpDraw();setTimeout(function(){rpRecStop(true)},400)},50)}
   rpDraw();RP.raf=requestAnimationFrame(rpTick)}
 function rpPlay(on){RP.play=on;RP.last=0;$("rpPlay").textContent=on?"⏸ หยุด":"▶ เล่น";cancelAnimationFrame(RP.raf);
   if(on){if(RP.T>=RP.t1)RP.T=RP.t0;RP.raf=requestAnimationFrame(rpTick)}}
 function rpOpen(){
-  if(!grp.on||!fbBase())return;RP.open=true;$("rpFull").hidden=false;$("rpTitle").textContent="เล่นย้อนหลัง · กลุ่ม "+grp.room;
-  RP.data=[];rpDraw();rpLoad()}
-function rpClose(){rpPlay(false);RP.open=false;$("rpFull").hidden=true}
+  if(!grp.on||!fbBase())return;
+  RP.open=true;RPON=true;RP.mv={u:MV.u,v:MV.v,z:MV.z};
+  var mb=$("mapbox");RP.ph=document.createComment("mapbox");mb.parentNode.insertBefore(RP.ph,mb);$("rpHost").appendChild(mb);
+  $("rpFull").hidden=false;$("rpTitle").textContent="เล่นย้อนหลัง · กลุ่ม "+grp.room;
+  RP.data=[];setFollow(false);rpDraw();setTimeout(function(){rpFit()},60);rpLoad()}
+function rpClose(){
+  if(RP.rec)rpRecStop(false);rpPlay(false);RP.open=false;RPON=false;$("rpFull").hidden=true;
+  if(RP.ph&&RP.ph.parentNode){RP.ph.parentNode.insertBefore($("mapbox"),RP.ph);RP.ph.parentNode.removeChild(RP.ph)}
+  if(RP.mv){MV.u=RP.mv.u;MV.v=RP.mv.v;MV.z=RP.mv.z}reqDraw()}
+/* ----- บันทึกเป็นวิดีโอ ----- */
+function rpRecFrame(){
+  var r=RP.rec;if(!r)return;var cv=r.cv,c=cv.getContext("2d"),W=cv.width,H=cv.height;
+  c.fillStyle=css("--bg");c.fillRect(0,0,W,H);
+  try{ if(mode3d){c.drawImage($("glc"),0,0,W,H);c.drawImage($("map3d"),0,0,W,H)}else c.drawImage($("map"),0,0,W,H)}catch(e){}
+  var k=W/Math.max(1,$("map").clientWidth||W);c.save();c.scale(k,k);
+  var w=W/k,h=H/k;c.font="700 15px "+css("--mono");c.textAlign="left";c.textBaseline="top";
+  var t=hhmm(RP.T)+" น. · ผ่านไป "+Math.floor((RP.T-RP.t0)/3600000)+":"+pad(Math.floor((RP.T-RP.t0)/60000)%60);
+  c.fillStyle=css("--surface");c.globalAlpha=.85;c.fillRect(8,8,c.measureText(t).width+16,26);c.globalAlpha=1;c.fillStyle=css("--ink");c.fillText(t,16,13);
+  var lines=(RP.info||[]).slice(0,6);c.font="600 12px "+css("--font");
+  lines.forEach(function(x,i){var s=(i+1)+". "+x.d.name+"  "+(x.cur.km!=null?x.cur.km.toFixed(1)+" กม.":"-"),y=40+i*20,tw=c.measureText(s).width;
+    c.fillStyle=css("--surface");c.globalAlpha=.85;c.fillRect(8,y,tw+30,18);c.globalAlpha=1;c.fillStyle=x.d.color;c.fillRect(10,y+4,10,10);c.fillStyle=css("--ink");c.fillText(s,25,y+3)});
+  c.restore()}
+function rpRecStart(){
+  var m=$("rpMsg");
+  if(!RP.data.length){m.className="msg err";m.textContent="ยังไม่มีข้อมูลให้บันทึก";return}
+  if(!window.MediaRecorder||!HTMLCanvasElement.prototype.captureStream){m.className="msg err";m.textContent="เบราว์เซอร์นี้บันทึกวิดีโอไม่ได้ (ต้องใช้ Chrome/Safari รุ่นใหม่)";return}
+  var host=$("rpHost"),dpr=Math.min(window.devicePixelRatio||1,2),W=Math.round(host.clientWidth*dpr/2)*2,H=Math.round(host.clientHeight*dpr/2)*2,cv=document.createElement("canvas");cv.width=W;cv.height=H;
+  var types=["video/mp4;codecs=avc1","video/mp4","video/webm;codecs=vp9","video/webm;codecs=vp8","video/webm"],mt="";
+  for(var i=0;i<types.length;i++){if(MediaRecorder.isTypeSupported(types[i])){mt=types[i];break}}
+  var st,mr,chunks=[];
+  try{st=cv.captureStream(30);mr=mt?new MediaRecorder(st,{mimeType:mt,videoBitsPerSecond:4000000}):new MediaRecorder(st)}catch(e){m.className="msg err";m.textContent="เริ่มบันทึกวิดีโอไม่ได้";return}
+  RP.rec={cv:cv,mr:mr,chunks:chunks,mt:mr.mimeType||mt||"video/webm"};
+  mr.ondataavailable=function(e){if(e.data&&e.data.size)chunks.push(e.data)};
+  mr.onstop=function(){var r=RP.rec;RP.rec=null;RPREC=null;$("rpRec").textContent="⏺ บันทึกวิดีโอ";if(!r||!r.save)return;
+    var blob=new Blob(chunks,{type:r.mt}),ext=/mp4/.test(r.mt)?"mp4":"webm",a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="trail-replay-"+grp.room+"."+ext;
+    document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},4000);
+    m.className="msg";m.textContent="บันทึกวิดีโอแล้ว ("+(blob.size/1048576).toFixed(1)+" MB) ดูไฟล์ "+a.download+" ในโฟลเดอร์ดาวน์โหลด"};
+  RPREC=true;RP.T=RP.t0;rpDraw();
+  try{rpRecFrame();cv.getContext("2d").getImageData(0,0,1,1)}catch(e){RP.rec=null;RPREC=null;m.className="msg err";m.textContent="แหล่งภาพแผนที่นี้ไม่อนุญาตให้บันทึกวิดีโอ (CORS) ลองใช้แผนที่ปกติหรือดาวเทียมค่าเริ่มต้น";return}
+  mr.start(500);$("rpRec").textContent="⏹ หยุดและบันทึก";m.className="msg";m.textContent="กำลังบันทึกวิดีโอ… (เล่นอยู่ อย่าสลับแอป)";rpPlay(true)}
+function rpRecStop(save){var r=RP.rec;if(!r)return;r.save=save!==false;RPREC=null;try{r.mr.stop()}catch(e){RP.rec=null}}
+$("rpRec").onclick=function(){RP.rec?rpRecStop(true):rpRecStart()};
 $("gReplay").onclick=rpOpen;$("rpClose").onclick=rpClose;$("rpPlay").onclick=function(){rpPlay(!RP.play)};
 $("rpSl").oninput=function(e){RP.T=RP.t0+(RP.t1-RP.t0)*(+e.target.value)/1000;rpDraw()};
 Array.prototype.forEach.call(document.querySelectorAll("[data-rps]"),function(b){b.onclick=function(){RP.speed=+b.getAttribute("data-rps");
   Array.prototype.forEach.call(document.querySelectorAll("[data-rps]"),function(x){x.classList.toggle("primary",x===b)})}});
-window.addEventListener("resize",function(){if(RP.open)rpDraw()});
 $("gHistDel").onclick=function(){
   if(!grp.on||S.gView)return;
   if(!confirm("ลบประวัติเส้นทางของทั้งกลุ่ม "+grp.room+" ? ทุกคนจะดูย้อนหลังไม่ได้อีก"))return;

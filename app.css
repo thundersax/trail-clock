@@ -172,3 +172,5 @@ details.panel summary{cursor:pointer;font-weight:600}
 .rptb{border-collapse:collapse;width:100%;font-size:12px;margin-top:8px}.rptb th,.rptb td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left}
 .rptb small{color:var(--muted)}
 .rp .btn{flex:0 0 auto;width:auto;padding:8px 12px}.rp .pfbar{justify-content:space-between}.rpctl #rpTime{font-size:12px;min-width:92px}
+.rphost{flex:1 1 40vh;min-height:220px;position:relative;display:flex}
+.rphost .mapbox{height:100%;width:100%;flex:1}

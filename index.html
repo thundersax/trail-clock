@@ -272,19 +272,39 @@
   <div class="rpscroll"><div id="rpList"></div><div id="rpSplit" class="rpsplit"></div></div>
 </div>
 <div id="shFull" class="pfull sh" hidden role="dialog" aria-label="ภาพสรุป">
-  <div class="pfbar"><div class="mono pfinfo">ภาพสรุปการวิ่ง</div><button class="btn" id="shShare">แชร์</button><button class="btn primary" id="shSave">บันทึก PNG</button><button class="btn" id="shClose">ปิด</button></div>
+  <div class="pfbar"><div class="mono pfinfo">ภาพสรุปการวิ่ง · ลากองค์ประกอบบนภาพเพื่อย้ายตำแหน่ง</div><button class="btn" id="shShare">แชร์</button><button class="btn primary" id="shSave">บันทึก PNG</button><button class="btn" id="shClose">ปิด</button></div>
   <div class="shprev"><canvas id="shCv"></canvas></div>
   <div class="msg" id="shMsg"></div>
   <div class="shopts">
-    <label>ข้อมูล<select id="shSrc"></select></label>
+    <div class="shsec wide">จัดวาง</div>
+    <label>ชิ้นที่เลือก<select id="shSel"></select></label>
+    <label>ขนาดชิ้นที่เลือก<input type="range" id="shScale" min="30" max="300" value="100"></label>
+    <div class="wide row"><button class="btn" id="shResetOne">รีเซ็ตตำแหน่งชิ้นนี้</button><button class="btn" id="shResetAll">รีเซ็ตทั้งหมด</button></div>
+    <div class="shsec wide">ข้อมูลและตัวละคร</div>
+    <label class="wide">ข้อมูล<select id="shSrc"></select></label>
+    <label>ตัวละคร (ของนักวิ่งที่เลือก)<select id="shAv"></select></label>
+    <label>ชื่อที่แสดง<input type="text" id="shName" maxlength="24"></label>
+    <div class="shsec wide">รูปแบบและพื้นหลัง</div>
     <label>รูปแบบ<select id="shTpl"><option value="poster">โปสเตอร์เต็มภาพ</option><option value="overlay">โอเวอร์เลย์ (วางทับรูปถ่าย)</option><option value="route">เส้นทางอย่างเดียว</option></select></label>
     <label>ขนาด<select id="shAsp"><option value="916">9:16 สตอรี่</option><option value="45">4:5</option><option value="11">1:1</option></select></label>
-    <label>พื้นหลัง<select id="shBg"><option value="solid">สีทึบ</option><option value="none">โปร่งใส</option><option value="road">แผนที่ปกติ</option><option value="sat">ดาวเทียม</option></select></label>
-    <label>ธีมสี<select id="shTheme"><option value="green">เขียวเข้ม</option><option value="navy">กรมท่า</option><option value="black">ดำ</option><option value="cream">ครีม</option></select></label>
-    <label>สีตัวอักษร (โปร่งใส/แผนที่)<select id="shTxt"><option value="white">ขาว</option><option value="black">ดำ</option></select></label>
+    <label>พื้นหลัง<select id="shBg"><option value="solid">สีทึบ</option><option value="none">โปร่งใส</option><option value="road">แผนที่ปกติ</option><option value="sat">ดาวเทียม</option><option value="photo">รูปถ่ายของฉัน</option></select></label>
+    <label>อัปโหลดรูปถ่ายพื้นหลัง<input type="file" id="shPhoto" accept="image/*"></label>
+    <label>ความมืดทับรูปถ่าย<input type="range" id="shDim" min="0" max="80" value="30"></label>
+    <label>สีตัวอักษร (โปร่งใส/แผนที่/รูป)<select id="shTxt"><option value="white">ขาว</option><option value="black">ดำ</option></select></label>
+    <div class="shsec wide">ธีมสี</div>
+    <label>ธีม<select id="shTheme"><option value="green">เขียวเข้ม</option><option value="forest">เขียวป่า</option><option value="mint">มิ้นต์</option><option value="navy">กรมท่า</option><option value="ocean">ทะเล</option><option value="sky">ฟ้าใส</option><option value="black">ดำ</option><option value="graphite">กราไฟต์</option><option value="cream">ครีม</option><option value="sunset">พระอาทิตย์ตก</option><option value="orange">ส้มสด</option><option value="purple">ม่วง</option><option value="wine">ไวน์</option><option value="pink">ชมพู</option><option value="red">แดง</option><option value="white">ขาว</option><option value="custom">กำหนดเอง…</option></select></label>
+    <label>แบบอักษร<select id="shFont"><option value="app">ตามแอป</option><option value="serif">เซอริฟ</option><option value="mono">โมโน</option><option value="bold">หนาพิเศษ</option></select></label>
+    <div class="wide row" id="shCbgw" hidden><label>สีพื้น<input type="color" id="shCbg" value="#1f3a2c"></label><label>สีเน้น<input type="color" id="shCacc" value="#2fd08f"></label></div>
+    <div class="wide shchk"><label><input type="checkbox" id="shGrad"> พื้นหลังไล่เฉดสี</label><label><input type="checkbox" id="shLineOn"> สีเส้นกำหนดเอง</label><input type="color" id="shLine" value="#ff5a1f"></div>
+    <label>ความหนาเส้นทาง<input type="range" id="shLw" min="4" max="24" value="9"></label>
+    <div class="shsec wide">ข้อความ</div>
     <label class="wide">ชื่อรายการ<input type="text" id="shTitle" maxlength="60"></label>
-    <label class="wide">วันที่<input type="text" id="shDate" maxlength="30"></label>
-    <div class="shchk"><label><input type="checkbox" id="shRoute" checked> เส้นทาง</label><label><input type="checkbox" id="shStats" checked> ตัวเลข</label><label><input type="checkbox" id="shTime" checked> เวลา/เพซ</label><label><input type="checkbox" id="shChart" checked> กราฟความสูง</label><label><input type="checkbox" id="shChars" checked> ตัวละคร</label><label><input type="checkbox" id="shGrp" checked> ทั้งกลุ่ม</label><label><input type="checkbox" id="shDateOn" checked> วันที่</label><label><input type="checkbox" id="shFoot" checked> ชื่อแอป</label></div>
+    <label>วันที่<input type="text" id="shDate" maxlength="30"></label>
+    <label>คำบรรยาย<input type="text" id="shSub" maxlength="40" placeholder="เช่น Nam Nao 54K"></label>
+    <div class="shsec wide">ตัวเลขที่แสดง (แต่ละค่าลากได้)</div>
+    <div class="wide shchk"><label><input type="checkbox" data-st="dist" checked> ระยะทาง</label><label><input type="checkbox" data-st="gain" checked> ไต่ขึ้นรวม</label><label><input type="checkbox" data-st="loss"> ลงรวม</label><label><input type="checkbox" data-st="max" checked> จุดสูงสุด</label><label><input type="checkbox" data-st="min"> จุดต่ำสุด</label><label><input type="checkbox" data-st="time" checked> เวลารวม</label><label><input type="checkbox" data-st="pace" checked> เพซเฉลี่ย</label><label><input type="checkbox" data-st="speed"> ความเร็วเฉลี่ย</label></div>
+    <div class="shsec wide">องค์ประกอบ</div>
+    <div class="wide shchk"><label><input type="checkbox" id="shRoute" checked> เส้นทาง</label><label><input type="checkbox" id="shCps"> จุด CP</label><label><input type="checkbox" id="shChart" checked> กราฟความสูง</label><label><input type="checkbox" id="shChars" checked> ตัวละคร</label><label><input type="checkbox" id="shGrp" checked> ทั้งกลุ่ม</label><label><input type="checkbox" id="shDateOn" checked> วันที่</label><label><input type="checkbox" id="shFoot" checked> ชื่อแอป</label></div>
   </div>
 </div>
 <script src="config.js"></script>

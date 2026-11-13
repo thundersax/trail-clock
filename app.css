@@ -184,3 +184,6 @@ details.panel summary{cursor:pointer;font-weight:600}
 .shopts select,.shopts input[type=text]{font:inherit;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
 .shopts .wide,.shopts .shchk{grid-column:1/-1}.shchk{display:flex;flex-wrap:wrap;gap:6px 14px}.shchk label{flex-direction:row;align-items:center;color:var(--ink);gap:5px}
 .sh .msg{padding:0 12px}
+.shprev canvas{touch-action:none;cursor:grab}.shsec{font-weight:700;font-size:12px;color:var(--ink);margin-top:8px;border-bottom:1px solid var(--line);padding-bottom:3px}
+.shopts input[type=color]{width:44px;height:30px;padding:0;border:1px solid var(--line);border-radius:6px;background:none}
+.shopts input[type=range]{width:100%}.shopts .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}

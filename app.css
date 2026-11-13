@@ -174,3 +174,5 @@ details.panel summary{cursor:pointer;font-weight:600}
 .rp .btn{flex:0 0 auto;width:auto;padding:8px 12px}.rp .pfbar{justify-content:space-between}.rpctl #rpTime{font-size:12px;min-width:92px}
 .rphost{flex:1 1 40vh;min-height:220px;position:relative;display:flex}
 .rphost .mapbox{height:100%;width:100%;flex:1}
+.rp .pfbar{flex-wrap:wrap;gap:6px}.rp .pfinfo{flex:1 1 100%}
+.rp-fs .rpscroll,.rp-fs .rpsp,.rp-fs #rpPick{display:none!important}.rp-fs .rphost{flex:1 1 auto}

@@ -885,6 +885,9 @@ function onPos(){var km=runnerKm();checkAlerts(km);hillLine(km);if(follow)center
 
 /* ================= route UI ================= */
 function setRoute(r,persist){
+  if(!r){route=null;selSeg=null;scrubKm=null;lastKm=null;pv.a=0;pv.b=1;buildEvents();$("simKm").max=1;
+    $("gTotal").textContent="-";$("gGain").textContent="-";$("gMax").textContent="-";
+    renderHills();updateTileEstimate();hillLine(runnerKm());drawAll();tick();return}
   route=r;selSeg=null;scrubKm=null;lastKm=null;pv.a=0;pv.b=1;buildEvents();
   var km=Math.floor(r.total/100)/10;$("simKm").max=Math.max(km,1);
   if(simKm>km){simKm=0;$("simKm").value=0;$("simKmV").textContent="0.0"}
@@ -905,7 +908,7 @@ $("sampleBtn").onclick=function(){setRoute(sampleRoute(),false);$("gpxMsg").clas
 var clearArm=false;
 $("clearBtn").onclick=function(){var b=$("clearBtn");
   if(!clearArm){clearArm=true;b.textContent="กดอีกครั้งเพื่อยืนยัน";setTimeout(function(){clearArm=false;b.textContent="ล้างเส้นทางที่บันทึกไว้"},3000);return}
-  clearArm=false;b.textContent="ล้างเส้นทางที่บันทึกไว้";LS.del("tcc.route");setRoute(sampleRoute(),false);$("gpxMsg").textContent="ล้างแล้ว กลับไปใช้เส้นทางตัวอย่าง"};
+  clearArm=false;b.textContent="ล้างเส้นทางที่บันทึกไว้";LS.del("tcc.route");setRoute(null,false);$("gpxMsg").className="msg";$("gpxMsg").textContent="ล้างแล้ว ยังไม่มีเส้นทาง นำเข้าไฟล์ GPX หรือโหลดจากกลุ่ม"};
 
 /* ================= start / inputs ================= */
 $("startBtn").onclick=function(){unlockAudio();if(startTs==null){startTs=nowMs();save();tick()}};
@@ -1018,7 +1021,7 @@ $("gpsBtn").onclick=function(){
 var trArm=false;
 $("trClear").onclick=function(){var b=$("trClear");
   if(!trArm){trArm=true;b.textContent="กดอีกครั้งเพื่อยืนยัน";setTimeout(function(){trArm=false;b.textContent="ล้างรอยทางที่เดิน"},3000);return}
-  trArm=false;b.textContent="ล้างรอยทางที่เดิน";trail=[];trailSaved=0;LS.del("tcc.trail");reqDraw()};
+  trArm=false;b.textContent="ล้างรอยทางที่เดิน";trail=[];trailSaved=0;LS.del("tcc.trail");reqDraw();if(grp.on&&!S.gView)gDelFb("mine")};
 
 /* ================= wake lock ================= */
 var wl=null;
@@ -1206,7 +1209,7 @@ function routeUnpack(p){var pts=[],la=0,lo=0,el=0;
   if(pts.length<2)throw new Error("bad route");return pts}
 function restoreOwn(){
   if(ownPlan){cps=ownPlan.cps;planStart=ownPlan.ps;ownPlan=null;renderCps();$("planStart").value=planStart;save()}
-  if(route&&route.viewer){var r=LS.get("tcc.route"),nr=null;if(r){try{nr=build(JSON.parse(r))}catch(e){}}setRoute(nr||sampleRoute(),false)}
+  if(route&&route.viewer){var r=LS.get("tcc.route"),nr=null;if(r){try{nr=build(JSON.parse(r))}catch(e){}}setRoute(nr,false)}
 }
 async function gSyncRoute(){
   var base=fbBase()+"/routes/"+grp.room,real=route&&!route.sample&&!route.viewer;
@@ -1222,7 +1225,7 @@ async function gSyncRoute(){
     }
     grp.routeKey=key;return;
   }
-  if(real)return;
+  if(real||!S.gView)return;
   var now=Date.now();if(now-grp.routeTried<(route&&route.viewer?60000:15000))return;grp.routeTried=now;
   var q=await fetchT(base+".json",{cache:"no-store"},15000);if(!q.ok)throw new Error("HTTP "+q.status);
   var d=await q.json();if(!d||!d.p)return;
@@ -1352,6 +1355,12 @@ document.addEventListener("visibilitychange",function(){if(document.hidden&&grp.
 
 /* ----- หน้าเล่นย้อนหลัง (ใช้แผนที่เดิม 2D/ดาวเทียม/3D) ----- */
 var RP={open:false,data:[],t0:0,t1:0,T:0,play:false,speed:60,raf:0,last:0,cs:[],ph:null,mv:null,rec:null};
+function rpFinish(list,emptyMsg){
+  var m=$("rpMsg");RP.data=list;
+  if(!list.length){m.className="msg";m.textContent=emptyMsg;rpDraw();return}
+  RP.t0=Math.min.apply(null,list.map(function(x){return x.pts[0][0]}));RP.t1=Math.max.apply(null,list.map(function(x){return x.pts[x.pts.length-1][0]}));
+  RP.T=RP.t0;m.textContent="";rpSplits();rpFit();rpDraw()}
+function rpKm(pts){if(route){pts.forEach(function(p){if(p[3]==null){var q=nearestIn(p[1],p[2],0,route.n);p[3]=q.off<300?q.km:null}})}}
 function rpLoad(){
   var m=$("rpMsg");m.textContent="กำลังโหลดประวัติ…";m.className="msg";
   return histFlush(true).catch(function(){}).then(function(){return fetchT(fbBase()+"/tracks/"+grp.room+".json",{cache:"no-store"},15000)}).then(function(r){
@@ -1363,14 +1372,35 @@ function rpLoad(){
       var dd=[];pts.forEach(function(p){if(!dd.length||p[0]>dd[dd.length-1][0])dd.push(p)});pts=dd;
       if(pts.length<2)return;
       var av=(mm.av===CUI&&typeof mm.cu==="string"&&cuDecode(mm.cu))?cuDecode(mm.cu):avIdx(mm.av,id);
-      if(route){var prev=0;pts.forEach(function(p){if(p[3]==null){var q=nearestIn(p[1],p[2],0,route.n);p[3]=q.off<300?q.km:null}})}
+      rpKm(pts);
       list.push({id:id,name:String(mm.n||"?").slice(0,24),av:av,color:colors[id],pts:pts,me:id===myUid()})});
-    RP.data=list;
-    if(!list.length){m.className="msg";m.textContent="ยังไม่มีประวัติในกลุ่มนี้ (ประวัติจะถูกบันทึกจากเครื่องของคนที่เปิดแอปและแชร์ตำแหน่งระหว่างวิ่ง)";return}
-    RP.t0=Math.min.apply(null,list.map(function(x){return x.pts[0][0]}));RP.t1=Math.max.apply(null,list.map(function(x){return x.pts[x.pts.length-1][0]}));
-    RP.T=RP.t0;m.textContent="";rpSplits();rpFit();rpDraw();
+    rpFinish(list,"ยังไม่มีประวัติในกลุ่มนี้ (ประวัติจะถูกบันทึกจากเครื่องของคนที่เปิดแอปและแชร์ตำแหน่งระหว่างวิ่ง)");
   }).catch(function(e){m.className="msg err";m.textContent=(e&&/HTTP (401|403)/.test(e.message))?"อ่านประวัติไม่ได้: ต้องอัปเดตกฎ (rules) ใน Firebase ก่อน":"โหลดประวัติไม่ได้ (ไม่มีสัญญาณ)"});
 }
+/* นำเข้า GPX (มีเวลา) มาเล่นย้อนหลังในเครื่อง ไม่ส่งขึ้น Firebase */
+function gpxTimed(text){
+  var doc=new DOMParser().parseFromString(text,"application/xml");
+  if(doc.getElementsByTagName("parsererror").length)throw new Error("อ่านไฟล์ไม่ได้");
+  var nodes=doc.getElementsByTagName("trkpt"),pts=[],bad=0;
+  for(var i=0;i<nodes.length;i++){var la=parseFloat(nodes[i].getAttribute("lat")),lo=parseFloat(nodes[i].getAttribute("lon")),te=nodes[i].getElementsByTagName("time")[0],t=te?Date.parse(te.textContent):NaN;
+    if(isNaN(la)||isNaN(lo))continue;if(isNaN(t)){bad++;continue}pts.push([t,Math.round(la*1e5)/1e5,Math.round(lo*1e5)/1e5,null])}
+  if(pts.length<2)throw new Error("ไฟล์นี้ไม่มีเวลาในจุดเส้นทาง เล่นย้อนหลังตามเวลาไม่ได้");
+  pts.sort(function(a,b){return a[0]-b[0]});
+  var out=[];pts.forEach(function(p){var l=out[out.length-1];if(!l||p[0]-l[0]>=5000)out.push(p)});
+  if(out.length>4000){var o2=[],st=(out.length-1)/3999;for(var q=0;q<4000;q++)o2.push(out[Math.round(q*st)]);out=o2}
+  return out}
+function rpImportFiles(files){
+  var m=$("rpMsg");m.className="msg";m.textContent="กำลังอ่านไฟล์…";
+  var jobs=Array.prototype.slice.call(files,0,8).map(function(f,idx){return new Promise(function(res){
+    var fr=new FileReader();fr.onload=function(){try{res({name:f.name.replace(/\.gpx$/i,"").slice(0,24),text:String(fr.result),pts:gpxTimed(String(fr.result)),idx:idx})}catch(e){res({err:f.name+": "+e.message})}};fr.onerror=function(){res({err:f.name+": อ่านไม่ได้"})};fr.readAsText(f)})});
+  Promise.all(jobs).then(function(rs){
+    var errs=rs.filter(function(r){return r.err}).map(function(r){return r.err}),ok=rs.filter(function(r){return !r.err});
+    if(!ok.length){m.className="msg err";m.textContent=errs.join(" · ")||"ไม่มีไฟล์ที่เล่นได้";return}
+    if(!route){try{var R=build(parseGpx(ok[0].text,ok[0].name));RP.tmpRoute=true;setRoute(R,false)}catch(e){}}
+    var ids=ok.map(function(r,i){return "g"+i}),colors=assignColors(ids);
+    var list=ok.map(function(r,i){rpKm(r.pts);return {id:ids[i],name:r.name,av:avFallback(ids[i]+r.name),color:colors[ids[i]],pts:r.pts,me:false}});
+    rpFinish(list,"");if(errs.length){m.className="msg err";m.textContent="ข้ามบางไฟล์: "+errs.join(" · ")}
+  })}
 function rpAt(d,T){var p=d.pts;if(T<p[0][0])return null;var n=p.length;if(T>=p[n-1][0])return {lat:p[n-1][1],lon:p[n-1][2],km:p[n-1][3],end:true,i:n-1};
   var lo=0,hi=n-1;while(hi-lo>1){var m=(lo+hi)>>1;if(p[m][0]<=T)lo=m;else hi=m}
   var a=p[lo],b=p[hi],f=(T-a[0])/(b[0]-a[0]);if(b[0]-a[0]>600000)f=0; // ขาดหายนานกว่า 10 นาที ค้างจุดเดิม
@@ -1438,15 +1468,18 @@ function rpTick(ts){
   rpDraw();RP.raf=requestAnimationFrame(rpTick)}
 function rpPlay(on){RP.play=on;RP.last=0;$("rpPlay").textContent=on?"⏸ หยุด":"▶ เล่น";cancelAnimationFrame(RP.raf);
   if(on){if(RP.T>=RP.t1)RP.T=RP.t0;RP.raf=requestAnimationFrame(rpTick)}}
-function rpOpen(){
-  if(!grp.on||!fbBase())return;
+function rpOpen(mode){
+  if(mode!=="gpx"&&(!grp.on||!fbBase())){var gm=$("gMsg");gm.className="msg err";gm.textContent="เข้าร่วมกลุ่มและตั้งค่า Firebase ก่อน หรือใช้ปุ่มเล่นจากไฟล์ GPX";return}
+  RP.mode=mode==="gpx"?"gpx":"fb";
   RP.open=true;RPON=true;RP.mv={u:MV.u,v:MV.v,z:MV.z};
   var mb=$("mapbox");RP.ph=document.createComment("mapbox");mb.parentNode.insertBefore(RP.ph,mb);$("rpHost").appendChild(mb);
-  $("rpFull").hidden=false;$("rpTitle").textContent="เล่นย้อนหลัง · กลุ่ม "+grp.room;
-  RP.data=[];setFollow(false);rpDraw();setTimeout(function(){rpFit()},60);rpLoad()}
+  $("rpFull").hidden=false;$("rpTitle").textContent=RP.mode==="gpx"?"เล่นย้อนหลังจากไฟล์ GPX":"เล่นย้อนหลัง · กลุ่ม "+grp.room;
+  RP.data=[];setFollow(false);rpDraw();setTimeout(function(){rpFit()},60);if(RP.mode==="fb")rpLoad();else{$("rpMsg").className="msg";$("rpMsg").textContent="เลือกไฟล์ GPX ที่มีเวลา (เลือกได้หลายไฟล์ = หลายคน)";$("rpFile").click()}}
 function rpClose(){
   if(RP.rec)rpRecStop(false);rpPlay(false);RP.open=false;RPON=false;$("rpFull").hidden=true;
   if(RP.ph&&RP.ph.parentNode){RP.ph.parentNode.insertBefore($("mapbox"),RP.ph);RP.ph.parentNode.removeChild(RP.ph)}
+  if(RP.tmpRoute){RP.tmpRoute=false;setRoute(null,false)}
+  $("rpFull").classList.remove("rp-fs");$("rpFs").textContent="⛶ เต็มจอ";try{if(document.fullscreenElement)document.exitFullscreen()}catch(e){}
   if(RP.mv){MV.u=RP.mv.u;MV.v=RP.mv.v;MV.z=RP.mv.z}reqDraw()}
 /* ----- บันทึกเป็นวิดีโอ ----- */
 function rpRecFrame(){
@@ -1481,10 +1514,40 @@ function rpRecStart(){
   mr.start(500);$("rpRec").textContent="⏹ หยุดและบันทึก";m.className="msg";m.textContent="กำลังบันทึกวิดีโอ… (เล่นอยู่ อย่าสลับแอป)";rpPlay(true)}
 function rpRecStop(save){var r=RP.rec;if(!r)return;r.save=save!==false;RPREC=null;try{r.mr.stop()}catch(e){RP.rec=null}}
 $("rpRec").onclick=function(){RP.rec?rpRecStop(true):rpRecStart()};
-$("gReplay").onclick=rpOpen;$("rpClose").onclick=rpClose;$("rpPlay").onclick=function(){rpPlay(!RP.play)};
+$("gReplay").onclick=function(){rpOpen("fb")};$("rpImport").onclick=function(){rpOpen("gpx")};$("rpPick").onclick=function(){$("rpFile").click()};$("rpFile").onchange=function(e){if(e.target.files&&e.target.files.length)rpImportFiles(e.target.files);e.target.value=""};
+$("rpFs").onclick=function(){var o=$("rpFull"),on=!o.classList.contains("rp-fs");o.classList.toggle("rp-fs",on);$("rpFs").textContent=on?"✕ ย่อ":"⛶ เต็มจอ";
+  try{if(on&&o.requestFullscreen)o.requestFullscreen().catch(function(){});else if(!on&&document.fullscreenElement)document.exitFullscreen()}catch(e){}
+  setTimeout(function(){reqDraw()},120)};
+document.addEventListener("fullscreenchange",function(){if(!document.fullscreenElement&&RP.open&&$("rpFull").classList.contains("rp-fs")){$("rpFull").classList.remove("rp-fs");$("rpFs").textContent="⛶ เต็มจอ";setTimeout(reqDraw,120)}});
+$("rpClose").onclick=rpClose;$("rpPlay").onclick=function(){rpPlay(!RP.play)};
 $("rpSl").oninput=function(e){RP.T=RP.t0+(RP.t1-RP.t0)*(+e.target.value)/1000;rpDraw()};
 Array.prototype.forEach.call(document.querySelectorAll("[data-rps]"),function(b){b.onclick=function(){RP.speed=+b.getAttribute("data-rps");
   Array.prototype.forEach.call(document.querySelectorAll("[data-rps]"),function(x){x.classList.toggle("primary",x===b)})}});
+
+async function gPullRoute(){
+  var m=$("gMsg");if(!grp.on||!fbBase()){m.className="msg err";m.textContent="เข้าร่วมกลุ่มก่อน";return}
+  try{var q=await fetchT(fbBase()+"/routes/"+grp.room+".json",{cache:"no-store"},15000);if(!q.ok)throw new Error("HTTP "+q.status);
+    var d=await q.json();if(!d||!d.p){m.className="msg err";m.textContent="กลุ่มนี้ยังไม่มีเส้นทางบน Firebase";return}
+    var R=build({name:String(d.nm||"เส้นทางจากกลุ่ม"),pts:routeUnpack(d.p)});R.viewer=true;R.vh=d.h;
+    if(d.c){try{var cc=JSON.parse(d.c).map(function(x){return {name:String(x[0]),km:+x[1],time:String(x[2])}}).filter(function(x){return isFinite(x.km)&&/^\d{1,2}:\d{2}$/.test(x.time)});
+      if(cc.length){if(!ownPlan)ownPlan={cps:cps,ps:planStart};cps=cc;if(/^\d{1,2}:\d{2}$/.test(d.ps||""))planStart=d.ps;renderCps();$("planStart").value=planStart}}catch(e){}}
+    setRoute(R,false);$("gpxMsg").className="msg";$("gpxMsg").textContent="ใช้เส้นทางจากกลุ่ม "+grp.room+" (ไม่ได้บันทึกในเครื่อง)";
+    m.className="msg";m.textContent="โหลดเส้นทางของกลุ่มแล้ว"
+  }catch(e){m.className="msg err";m.textContent="โหลดเส้นทางไม่ได้ ("+((e&&e.message)||"ไม่มีสัญญาณ")+")"}}
+async function gDelFb(what){ // what: "mine" = ประวัติของเรา, "all" = ประวัติของเรา + เส้นทางของกลุ่ม
+  if(!grp.on||!fbBase())return true;
+  var base=fbBase(),ok=true;
+  try{
+    var r1=await fetchT(base+"/tracks/"+grp.room+"/"+myUid()+".json",{method:"DELETE"},10000);ok=ok&&r1.ok;
+    if(what==="all"){var r2=await fetchT(base+"/routes/"+grp.room+".json",{method:"DELETE"},10000);ok=ok&&r2.ok;grp.routeKey=""}
+  }catch(e){ok=false}
+  HQ.pts=[];HQ.last=null;HQ.metaKey="";hqSave();return ok}
+$("gPullRoute").onclick=gPullRoute;
+$("gClearFb").onclick=async function(){
+  var m=$("gMsg");if(!grp.on){m.className="msg err";m.textContent="เข้าร่วมกลุ่มก่อน";return}
+  if(S.gView){m.className="msg err";m.textContent="โหมดผู้ชมลบข้อมูลกลุ่มไม่ได้";return}
+  if(!confirm("ลบเส้นทาง GPX ของกลุ่ม "+grp.room+" และประวัติของคุณบน Firebase? เพื่อนจะไม่เห็นเส้นทางนี้และเล่นย้อนหลังของคุณไม่ได้อีก"))return;
+  var ok=await gDelFb("all");m.className=ok?"msg":"msg err";m.textContent=ok?"ลบเส้นทางของกลุ่มและประวัติของคุณบน Firebase แล้ว (ในเครื่องยังเก็บไว้ ใช้ปุ่มล้างเส้นทางเพื่อล้างในเครื่อง)":"ลบบน Firebase ไม่ได้ (ตรวจสัญญาณหรือกฎ rules)"};
 $("gHistDel").onclick=function(){
   if(!grp.on||S.gView)return;
   if(!confirm("ลบประวัติเส้นทางของทั้งกลุ่ม "+grp.room+" ? ทุกคนจะดูย้อนหลังไม่ได้อีก"))return;
@@ -1633,7 +1696,7 @@ $("tUrl").value=S.tileUrl||"";$("tAttr").value=S.tileAttr||"";$("sUrl").value=S.
 if(S.exv!==2){S.ex=1;S.exv=2;save()}
 G.exI=Math.max(0,EXS.indexOf(S.ex));$("r3E").textContent="สูง×"+EXS[G.exI];$("mRoad").setAttribute("aria-pressed",S.base!=="sat");$("mSat").setAttribute("aria-pressed",S.base==="sat");
 loadTrail();renderCps();renderLegend();filterBtns();
-if(!route){route=sampleRoute();$("gpxMsg").textContent="กำลังแสดงเส้นทางตัวอย่าง อัปโหลด GPX จริงได้ที่นี่"}
+if(!route){$("gpxMsg").textContent="ยังไม่มีเส้นทาง เลือกไฟล์ GPX หรือโหลดจากกลุ่ม"}
 else{$("gpxMsg").textContent=(route.name?route.name+" · ":"")+(route.total/1000).toFixed(1)+" กม. โหลดจากที่บันทึกไว้ในเครื่อง"}
 var _r=route;route=null;setRoute(_r,false);
 lastKm=runnerKm();

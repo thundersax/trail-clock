@@ -176,3 +176,11 @@ details.panel summary{cursor:pointer;font-weight:600}
 .rphost .mapbox{height:100%;width:100%;flex:1}
 .rp .pfbar{flex-wrap:wrap;gap:6px}.rp .pfinfo{flex:1 1 100%}
 .rp-fs .rpscroll,.rp-fs .rpsp,.rp-fs #rpPick{display:none!important}.rp-fs .rphost{flex:1 1 auto}
+.sh{z-index:90;overflow:auto}.sh .pfbar{flex-wrap:wrap;gap:6px}.sh .pfinfo{flex:1 1 auto}
+.shprev{flex:0 0 auto;display:flex;justify-content:center;padding:8px;background:var(--bg)}
+.shprev canvas{max-width:100%;max-height:52vh;width:auto;height:auto;border:1px solid var(--line);border-radius:8px}
+.shprev canvas.chk{background-image:conic-gradient(#ccc 25%,#fff 0 50%,#ccc 0 75%,#fff 0);background-size:20px 20px}
+.shopts{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px 12px 20px}.shopts label{display:flex;flex-direction:column;font-size:12px;gap:3px;color:var(--muted)}
+.shopts select,.shopts input[type=text]{font:inherit;padding:6px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+.shopts .wide,.shopts .shchk{grid-column:1/-1}.shchk{display:flex;flex-wrap:wrap;gap:6px 14px}.shchk label{flex-direction:row;align-items:center;color:var(--ink);gap:5px}
+.sh .msg{padding:0 12px}

@@ -1553,14 +1553,17 @@ $("gReplay").onclick=function(){rpOpen("fb")};$("rpImport").onclick=function(){r
 RP.fol=-1;RP.spin=false;
 function rpAnim(ts){if(!RP.open||(!RP.spin&&RP.fol<0)){RP.anim=0;return}
   var dt=RP.al?Math.min(100,ts-RP.al):16;RP.al=ts;
-  if(RP.spin&&mode3d)cam.b=(cam.b+dt*0.012)%360;
-  if(RP.fol>=0&&RP.data.length){var x=RP.cs.filter(function(q){return q.d===RP.data[RP.fol]})[0];if(x){MV.u=(x.cur.lon+180)/360;MV.v=merc(x.cur.lat)}}
+  var tg=RP.fol>=0?RP.data[RP.fol]:(RP.info&&RP.info[0]?RP.info[0].d:RP.data[0]);
+  var x=tg&&RP.cs.filter(function(q){return q.d===tg})[0];
+  if(x){MV.u=(x.cur.lon+180)/360;MV.v=merc(x.cur.lat);
+    if(RP.spin&&mode3d){var p=x.d.pts,i=x.cur.i,A=p[Math.max(0,i-3)],B=p[Math.min(p.length-1,i+4)],dy=B[1]-A[1],dx=(B[2]-A[2])*Math.cos(A[1]*Math.PI/180);
+      if(Math.hypot(dx,dy)*111320>8){var tb=Math.atan2(dx,dy)*180/Math.PI,df=((tb-cam.b+540)%360)-180;cam.b=(cam.b+df*(1-Math.exp(-dt/700))+360)%360}}}
   reqDraw();RP.anim=requestAnimationFrame(rpAnim)}
 function rpAnimOn(){if(!RP.anim){RP.al=0;RP.anim=requestAnimationFrame(rpAnim)}}
 $("rpLock").onclick=function(){if(!RP.data.length)return;RP.fol++;if(RP.fol>=RP.data.length)RP.fol=-1;
   $("rpLock").textContent=RP.fol<0?"🎯 ไม่ล็อก":"🎯 "+RP.data[RP.fol].name;
   if(RP.fol>=0&&MV.z<14.5)MV.z=15.5;rpAnimOn();reqDraw()};
-$("rpSpin").onclick=function(){RP.spin=!RP.spin;$("rpSpin").classList.toggle("primary",RP.spin);if(RP.spin&&!mode3d)$("rpMsg").textContent="หมุนอัตโนมัติใช้ได้ในโหมด 3D (กดปุ่ม 3D บนแผนที่)";rpAnimOn()};
+$("rpSpin").onclick=function(){RP.spin=!RP.spin;$("rpSpin").classList.toggle("primary",RP.spin);if(RP.spin&&!mode3d)$("rpMsg").textContent="หมุนตามทิศวิ่งใช้ได้ในโหมด 3D (กดปุ่ม 3D บนแผนที่)";rpAnimOn()};
 $("rpFs").onclick=function(){var o=$("rpFull"),on=!o.classList.contains("rp-fs");o.classList.toggle("rp-fs",on);$("rpFs").textContent=on?"✕ ย่อ":"⛶ เต็มจอ";
   try{if(on&&o.requestFullscreen)o.requestFullscreen().catch(function(){});else if(!on&&document.fullscreenElement)document.exitFullscreen()}catch(e){}
   setTimeout(function(){reqDraw()},120)};
@@ -1594,6 +1597,159 @@ $("gClearFb").onclick=async function(){
   if(S.gView){m.className="msg err";m.textContent="โหมดผู้ชมลบข้อมูลกลุ่มไม่ได้";return}
   if(!confirm("ลบเส้นทาง GPX ของกลุ่ม "+grp.room+" และประวัติของคุณบน Firebase? เพื่อนจะไม่เห็นเส้นทางนี้และเล่นย้อนหลังของคุณไม่ได้อีก"))return;
   var ok=await gDelFb("all");m.className=ok?"msg":"msg err";m.textContent=ok?"ลบเส้นทางของกลุ่มและประวัติของคุณบน Firebase แล้ว (ในเครื่องยังเก็บไว้ ใช้ปุ่มล้างเส้นทางเพื่อล้างในเครื่อง)":"ลบบน Firebase ไม่ได้ (ตรวจสัญญาณหรือกฎ rules)"};
+/* ===== ภาพสรุป (สไตล์โปสเตอร์ / โอเวอร์เลย์ / พื้นหลังโปร่งใส) ===== */
+var SH={src:[],cur:null,tmr:0,data:null};
+var SHTHEME={green:{bg:"#1f3a2c",ink:"#ffffff",sub:"#cfe3d8",acc:"#2fd08f",fill:"#23563f"},navy:{bg:"#14213d",ink:"#ffffff",sub:"#c6cfe0",acc:"#ffb703",fill:"#22365f"},
+  black:{bg:"#111111",ink:"#ffffff",sub:"#c9c9c9",acc:"#ff6b35",fill:"#2b2b2b"},cream:{bg:"#f6f3ec",ink:"#1b1b1b",sub:"#5b5b55",acc:"#d9480f",fill:"#e6dfd0"}};
+function shNorm(kind,pts){ // -> [{lat,lon,t,km,ni}]
+  if(kind==="rp")return pts.map(function(p){return {lat:p[1],lon:p[2],t:p[0],km:p[3],ni:null}});
+  return pts.map(function(q){return {lat:q[0],lon:q[1],t:null,km:null,ni:q[4]==null?null:q[4]}})}
+function shSources(){
+  var L=[];
+  if(RP.open&&RP.data.length)RP.data.forEach(function(d){L.push({k:"rp:"+d.id,label:"วิ่งจริง: "+d.name,kind:"rp",name:d.name,pts:d.pts,av:d.av,color:d.color})});
+  if(trail.length>=10)L.push({k:"me",label:"รอยที่ฉันเดิน (GPS ในเครื่อง)",kind:"me",name:(grp.on&&grp.name&&!S.gView)?grp.name:"ฉัน",pts:trail,av:myAv(),color:(grp.on&&grp.myColor)||"#e8590c"});
+  if(route&&!route.ghost)L.push({k:"gpx",label:"เส้นทาง GPX ของสนาม",kind:"gpx",name:"",pts:null,av:null,color:"#e8590c"});
+  return L}
+function shCompute(src){
+  var o={dist:0,gain:0,max:null,series:[],line:[],time:null,pace:null,hasEle:false};
+  if(src.kind==="gpx"){var R=route,st=Math.max(1,Math.floor(R.n/400));
+    for(var i=0;i<=R.n;i+=st){o.line.push([R.lat[i],R.lon[i]]);o.series.push({d:i*R.step,e:R.se[i]})}
+    o.line.push([R.lat[R.n],R.lon[R.n]]);o.dist=R.total;o.gain=R.gain;o.max=R.max;o.hasEle=true;return o}
+  var P=shNorm(src.kind==="rp"?"rp":"me",src.pts),d=0,prev=null,lastEle=null,hi=null,lo=null,gain=0,mx=-1e9,seg=null;
+  P.forEach(function(p){
+    var jump=prev?hav(prev.lat,prev.lon,p.lat,p.lon):0,gap=prev&&p.t&&prev.t&&p.t-prev.t>600000;
+    if(prev&&!gap&&jump<2000)d+=jump;
+    if(!prev||gap||jump>=2000){seg=[];o.line.push(null);}
+    o.line.push([p.lat,p.lon]);
+    var e=null;
+    if(route&&!route.ghost){var ix=p.km!=null?idxAt(clamp(p.km,0,route.total/1000)):(p.ni!=null?clamp(p.ni,0,route.n):null);
+      if(ix==null){var q=nearestIn(p.lat,p.lon,0,route.n);if(q.off<400)ix=q.i}
+      if(ix!=null)e=route.se[ix]}
+    if(e!=null){o.series.push({d:d,e:e});if(e>mx)mx=e;
+      if(hi==null){hi=lo=e}else{if(e>hi)hi=e;if(e<lo)lo=e;
+        if(hi-e>=3){if(hi>lo&&hi-lo>=3)gain+=hi-lo;lo=e;hi=e}else if(e-lo>=3){}}
+      lastEle=e}
+    prev=p});
+  if(hi!=null&&hi>lo)gain+=hi-lo;
+  // ไต่สะสม แบบหยาบ: รวมการขึ้นของค่าที่ลดทอนแล้ว
+  if(o.series.length>1){var g=0,base=o.series[0].e;for(var k=1;k<o.series.length;k++){var df=o.series[k].e-base;if(df>=3){g+=df;base=o.series[k].e}else if(df<=-3)base=o.series[k].e}gain=g}
+  o.dist=d;o.gain=gain;o.max=mx>-1e8?mx:null;o.hasEle=o.series.length>3;
+  if(o.series.length>500){var s2=[],st2=(o.series.length-1)/499;for(var z=0;z<500;z++)s2.push(o.series[Math.round(z*st2)]);o.series=s2}
+  var f=P[0],l=P[P.length-1];if(f&&l&&f.t&&l.t&&l.t>f.t){o.time=l.t-f.t;if(d>500)o.pace=o.time/1000/(d/1000)}
+  return o}
+function shChars(src){
+  var L=[];
+  if(RP.open&&RP.data.length)RP.data.forEach(function(d){L.push({av:d.av,name:d.name,color:d.color,sel:src&&src.k==="rp:"+d.id})});
+  else if(grp.on){if(!S.gView)L.push({av:myAv(),name:grp.name||"ฉัน",color:grp.myColor||"#e8590c",sel:true});grp.friends.forEach(function(f){L.push({av:f.av,name:f.name,color:f.color,sel:false})})}
+  else L.push({av:myAv(),name:"",color:"#e8590c",sel:true});
+  return L}
+function shFmtT(ms){var s=Math.round(ms/1000),h=Math.floor(s/3600),m=Math.floor(s/60)%60;return h+":"+pad(m)+":"+pad(s%60)}
+function shFmtPace(sec){var m=Math.floor(sec/60),s=Math.round(sec%60);if(s===60){m++;s=0}return m+":"+pad(s)+" /กม."}
+function shOpts(){var v=function(id){return $(id).value},c=function(id){return $(id).checked};
+  return {tpl:v("shTpl"),asp:v("shAsp"),bg:v("shBg"),theme:v("shTheme"),txt:v("shTxt"),title:v("shTitle"),date:v("shDate"),
+    route:c("shRoute"),chart:c("shChart"),stats:c("shStats"),time:c("shTime"),chars:c("shChars"),dateOn:c("shDateOn"),foot:c("shFoot"),grp:c("shGrp")}}
+function shDraw(cv,o,D,chars,tilesPending){
+  var asp={"916":[1080,1920],"45":[1080,1350],"11":[1080,1080]}[o.asp]||[1080,1920],W=asp[0],H=asp[1];cv.width=W;cv.height=H;
+  var U=Math.min(W,H*.5625),c=cv.getContext("2d"),T=SHTHEME[o.theme]||SHTHEME.green,font=css("--font")||"sans-serif",m=W*.075;
+  var transp=o.bg==="none",mapBg=o.bg==="road"||o.bg==="sat";
+  var ink=transp||mapBg?(o.txt==="black"?"#111111":"#ffffff"):T.ink,sub=transp||mapBg?(o.txt==="black"?"#333333":"#e6e6e6"):T.sub;
+  c.clearRect(0,0,W,H);
+  if(o.bg==="solid"){c.fillStyle=T.bg;c.fillRect(0,0,W,H)}
+  // พื้นที่ของแต่ละส่วน
+  var blocks=[];
+  if(o.tpl==="route"){blocks=[{k:"route",w:6},{k:"title",w:1.4}]}
+  else{
+    if(o.route)blocks.push({k:"route",w:o.tpl==="poster"?3.2:2.2});
+    if(o.title||o.dateOn)blocks.push({k:"title",w:1.35});
+    if(o.stats)blocks.push({k:"stats",w:1.25});
+    if(o.time&&(D.time!=null))blocks.push({k:"time",w:.95});
+    if(o.chart&&D.hasEle)blocks.push({k:"chart",w:1.5});
+    if(o.chars)blocks.push({k:"chars",w:1.8});
+  }
+  if(o.foot)blocks.push({k:"foot",w:.55});
+  var sum=blocks.reduce(function(a,b){return a+b.w},0)||1,avail=H-m*2,usable=o.tpl==="overlay"?avail*.62:avail,y=o.tpl==="overlay"?H-m-usable:m;
+  var rects={};blocks.forEach(function(b){var h=usable*b.w/sum;rects[b.k]={x:m,y:y,w:W-m*2,h:h};y+=h});
+  // เส้นทาง (ใช้ projection แบบ mercator เดียวกับพื้นหลังแผนที่)
+  var pj=null,rr=rects.route;
+  if(D.line.length>1&&(rr||mapBg)){
+    var box=rr||{x:m,y:m,w:W-m*2,h:H*.4},u0=1,u1=0,v0=1,v1=0;
+    D.line.forEach(function(q){if(!q)return;var u=(q[1]+180)/360,v=merc(q[0]);if(u<u0)u0=u;if(u>u1)u1=u;if(v<v0)v0=v;if(v>v1)v1=v});
+    var du=Math.max(u1-u0,1e-6),dv=Math.max(v1-v0,1e-6),pad2=.06,k=Math.min(box.w*(1-pad2*2)/du,box.h*(1-pad2*2)/dv),cu=(u0+u1)/2,cvv=(v0+v1)/2,cx=box.x+box.w/2,cy=box.y+box.h/2;
+    pj={k:k,f:function(q){return [cx+((q[1]+180)/360-cu)*k,cy+(merc(q[0])-cvv)*k]}};
+    if(mapBg){ // ไทล์พื้นหลังทั้งภาพ
+      var z=clamp(Math.floor(Math.log(k/256)/Math.LN2),3,17),n=Math.pow(2,z),ws=256*n,wk=k/ws; // ขนาดจริงของไทล์บนภาพ = 256*wk
+      var tx0=Math.floor((cu-cx/k)*n),tx1=Math.floor((cu+(W-cx)/k)*n),ty0=Math.max(0,Math.floor((cvv-cy/k)*n)),ty1=Math.min(n-1,Math.floor((cvv+(H-cy)/k)*n));
+      if((tx1-tx0+1)*(ty1-ty0+1)<=80){var px=function(tu,tv){return [cx+(tu/n-cu)*k,cy+(tv/n-cvv)*k]},ts=k/n;
+        for(var ty=ty0;ty<=ty1;ty++)for(var tx=tx0;tx<=tx1;tx++){var im=getTile(z,((tx%n)+n)%n,ty);
+          if(im.complete&&im.naturalWidth){var pp=px(tx,ty);c.drawImage(im,pp[0],pp[1],ts+1,ts+1)}else tilesPending.n++}}
+      var gr=c.createLinearGradient(0,0,0,H);gr.addColorStop(0,"rgba(0,0,0,.35)");gr.addColorStop(.5,"rgba(0,0,0,.2)");gr.addColorStop(1,"rgba(0,0,0,.6)");c.fillStyle=gr;c.fillRect(0,0,W,H)}
+    if(rr){
+      var path=function(){c.beginPath();var pen=false;D.line.forEach(function(q){if(!q){pen=false;return}var p=pj.f(q);pen?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]);pen=true})};
+      c.lineJoin="round";c.lineCap="round";path();c.strokeStyle=(transp||mapBg)?"rgba(0,0,0,.45)":"#ffffff";c.globalAlpha=1;c.lineWidth=W*.014;c.stroke();
+      path();c.strokeStyle=T.acc;c.lineWidth=W*.0085;c.stroke();
+      var s0=D.line.filter(Boolean)[0];if(s0){var sp=pj.f(s0);c.beginPath();c.arc(sp[0],sp[1],W*.016,0,6.283);c.fillStyle="#d9480f";c.fill();c.lineWidth=W*.004;c.strokeStyle="#fff";c.stroke()}}
+  }
+  c.textBaseline="alphabetic";
+  var shadow=function(on){c.shadowColor=on?"rgba(0,0,0,.55)":"transparent";c.shadowBlur=on?U*.012:0};
+  var sh=transp||mapBg;
+  // ชื่อ + วันที่
+  var tr=rects.title;if(tr){shadow(sh);c.textAlign="left";var ts=U*.072,y2=tr.y+ts*.95;
+    if(o.title){c.font="700 "+ts+"px "+font;c.fillStyle=ink;
+      var words=o.title.split(/\s+/),lines=[],cur="";words.forEach(function(w){var t=cur?cur+" "+w:w;if(c.measureText(t).width>tr.w&&cur){lines.push(cur);cur=w}else cur=t});if(cur)lines.push(cur);
+      lines.slice(0,2).forEach(function(l,i){c.fillText(l,tr.x,y2+i*ts*1.1)});y2+=Math.min(2,lines.length)*ts*1.1}
+    if(o.dateOn&&o.date){c.font="500 "+U*.034+"px "+font;c.fillStyle=sub;c.fillText(o.date,tr.x,Math.min(y2+U*.01,tr.y+tr.h))}
+    shadow(false)}
+  // ตัวเลข
+  var stat=function(rect,items){shadow(sh);var cw=rect.w/items.length;items.forEach(function(it,i){var x=rect.x+i*cw,vs=U*.075;
+      c.textAlign="left";c.font="700 "+vs+"px "+font;c.fillStyle=ink;c.fillText(it.v,x,rect.y+vs);var vw=c.measureText(it.v).width;
+      if(it.u){c.font="600 "+vs*.42+"px "+font;c.fillStyle=sub;c.fillText(" "+it.u,x+vw,rect.y+vs)}
+      c.font="500 "+U*.032+"px "+font;c.fillStyle=sub;c.fillText(it.l,x,rect.y+vs+U*.045)});shadow(false)};
+  if(rects.stats){var it=[{v:(D.dist/1000).toFixed(1),u:"กม.",l:"ระยะทาง"}];if(D.hasEle){it.push({v:Math.round(D.gain).toLocaleString("en-US"),u:"ม.",l:"ไต่ขึ้นรวม"});it.push({v:Math.round(D.max).toLocaleString("en-US"),u:"ม.",l:"จุดสูงสุด"})}stat(rects.stats,it)}
+  if(rects.time&&D.time!=null){var it2=[{v:shFmtT(D.time),u:"",l:"เวลารวม"}];if(D.pace)it2.push({v:shFmtPace(D.pace).replace(" /กม.",""),u:"/กม.",l:"เพซเฉลี่ย"});stat(rects.time,it2)}
+  // กราฟความสูง
+  var cr=rects.chart;if(cr&&D.series.length>2){var mn=1e9,mxx=-1e9,tot=D.series[D.series.length-1].d||1;D.series.forEach(function(s){if(s.e<mn)mn=s.e;if(s.e>mxx)mxx=s.e});var rg=Math.max(mxx-mn,10);
+    var X=function(d){return cr.x+d/tot*cr.w},Y=function(e){return cr.y+cr.h*.9-(e-mn)/rg*cr.h*.8};
+    c.beginPath();c.moveTo(X(0),cr.y+cr.h*.95);D.series.forEach(function(s){c.lineTo(X(s.d),Y(s.e))});c.lineTo(X(tot),cr.y+cr.h*.95);c.closePath();
+    c.fillStyle=(transp||mapBg)?"rgba(255,255,255,.22)":T.fill;c.fill();
+    c.beginPath();D.series.forEach(function(s,i){i?c.lineTo(X(s.d),Y(s.e)):c.moveTo(X(s.d),Y(s.e))});c.lineJoin="round";c.strokeStyle=T.acc;c.lineWidth=U*.006;c.stroke()}
+  // ตัวละคร
+  var chr=rects.chars;if(chr&&chars.length){var n2=chars.length,px2=Math.min(chr.h*.62,U*.2,(chr.w/n2)*.9/ .75),gap=Math.min(chr.w/n2,px2*1.05);
+    var x0=chr.x+chr.w/2-gap*(n2-1)/2,by=chr.y+chr.h*.78;
+    chars.forEach(function(ch,i){var cx2=x0+i*gap;c.beginPath();c.ellipse(cx2,by+2,px2*.28,px2*.08,0,0,6.283);c.fillStyle=ch.color||T.acc;c.globalAlpha=.9;c.fill();c.globalAlpha=1;
+      drawSprite(c,ch.av,cx2,by+px2*.04,px2);
+      if(ch.name){shadow(sh);c.textAlign="center";c.font="600 "+Math.min(U*.032,px2*.28)+"px "+font;c.fillStyle=ink;c.fillText(ch.name,cx2,by+px2*.28);shadow(false)}})}
+  // ท้ายภาพ
+  var fr=rects.foot;if(fr){shadow(sh);c.textAlign="center";c.font="600 "+U*.03+"px "+font;c.fillStyle=sub;c.fillText("Trail Cutoff Clock",W/2,fr.y+fr.h*.6);shadow(false)}
+}
+function shRender(){
+  var o=shOpts(),src=SH.src.filter(function(s){return s.k===$("shSrc").value})[0]||SH.src[0];if(!src)return;
+  SH.cur=src;
+  if(SH.dk!==src.k){SH.data=shCompute(src);SH.dk=src.k;
+    var dt=$("shTime");if(SH.data.time==null){dt.checked=false;dt.disabled=true}else dt.disabled=false;
+    var dc=$("shChart");if(!SH.data.hasEle){dc.checked=false;dc.disabled=true}else dc.disabled=false}
+  var all=shChars(src),pick=o.grp?all:(all.filter(function(x){return x.sel}).length?all.filter(function(x){return x.sel}).slice(0,1):all.slice(0,1)),pend={n:0};shDraw($("shCv"),o,SH.data,pick,pend);
+  $("shCv").classList.toggle("chk",o.bg==="none");
+  clearTimeout(SH.tmr);if(pend.n>0&&(o.bg==="road"||o.bg==="sat")){SH.tmr=setTimeout(shRender,900)}}
+function shOpen(){
+  SH.src=shSources();SH.dk=null;
+  if(!SH.src.length){var m=$("gpxMsg");m.className="msg err";m.textContent="ยังไม่มีข้อมูลให้สร้างภาพ (เปิด GPS เดินสักพัก หรือโหลด GPX)";var rm=$("rpMsg");if(RP.open){rm.className="msg err";rm.textContent="ยังไม่มีข้อมูลให้สร้างภาพ"}return}
+  var sel=$("shSrc");sel.textContent="";SH.src.forEach(function(s){var op=document.createElement("option");op.value=s.k;op.textContent=s.label;sel.appendChild(op)});
+  if(!$("shTitle").value)$("shTitle").value=(route&&!route.ghost&&route.name)?route.name:"วิ่งเทรล";
+  var d0=SH.src[0].kind==="rp"&&SH.src[0].pts[0]?SH.src[0].pts[0][0]:Date.now();
+  if(!$("shDate").value)$("shDate").value=new Date(d0).toLocaleDateString("th-TH",{day:"numeric",month:"long",year:"numeric"});
+  $("shGrp").checked=shChars(SH.src[0]).length>1;
+  $("shFull").hidden=false;shRender()}
+function shClose(){$("shFull").hidden=true;clearTimeout(SH.tmr)}
+function shBlob(){return new Promise(function(res,rej){try{$("shCv").toBlob(function(b){b?res(b):rej(new Error("toBlob"))},"image/png")}catch(e){rej(e)}})}
+function shFail(e){var m=$("shMsg");m.className="msg err";m.textContent=(e&&e.name==="SecurityError")?"แหล่งภาพแผนที่ไม่อนุญาตให้บันทึกภาพ (CORS) ลองพื้นหลังสีทึบหรือโปร่งใส":"บันทึกภาพไม่สำเร็จ"}
+$("shBtn").onclick=shOpen;$("rpShare").onclick=shOpen;$("shClose").onclick=shClose;
+Array.prototype.forEach.call(document.querySelectorAll("#shFull select,#shFull input"),function(el){el.addEventListener("input",shRender);el.addEventListener("change",shRender)});
+$("shSave").onclick=function(){shBlob().then(function(b){var a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="trail-summary.png";document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},4000);
+  var m=$("shMsg");m.className="msg";m.textContent="บันทึกภาพแล้ว (trail-summary.png) ดูในโฟลเดอร์ดาวน์โหลด"}).catch(shFail)};
+$("shShare").onclick=function(){shBlob().then(function(b){var f=new File([b],"trail-summary.png",{type:"image/png"});
+  if(navigator.canShare&&navigator.canShare({files:[f]}))return navigator.share({files:[f],title:"สรุปการวิ่ง"});
+  var m=$("shMsg");m.className="msg err";m.textContent="เครื่องนี้แชร์ไฟล์ตรงไม่ได้ ใช้ปุ่มบันทึก PNG แทน"}).catch(function(e){if(e&&e.name==="AbortError")return;shFail(e)})};
+
 $("gHistDel").onclick=function(){
   if(!grp.on||S.gView)return;
   if(!confirm("ลบประวัติเส้นทางของทั้งกลุ่ม "+grp.room+" ? ทุกคนจะดูย้อนหลังไม่ได้อีก"))return;

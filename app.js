@@ -168,7 +168,8 @@ function setup(cv){var r=cv.getBoundingClientRect(),d=window.devicePixelRatio||1
 var raf=0,RPON=false,RPREC=null;
 function swapOwn(f){var sv=[gpsFix,trail,grp.friends];gpsFix=null;trail=[];grp.friends=[];try{f()}finally{gpsFix=sv[0];trail=sv[1];grp.friends=sv[2]}}
 function drawMap(){if(RPON)swapOwn(drawMap0);else drawMap0()}
-function draw3d(){if(RPON)swapOwn(draw3d0);else draw3d0()}
+function draw3d(){var gh=false;if(!route){route=getGhost();gh=true}
+  try{if(RPON)swapOwn(draw3d0);else draw3d0()}finally{if(gh)route=null}}
 function reqDraw(){if(raf)return;raf=requestAnimationFrame(function(){raf=0;if(mode3d)draw3d();else drawMap();if(RPREC)rpRecFrame()})}
 
 /* ================= elevation profile ================= */
@@ -224,6 +225,32 @@ function drawProfile(cv,tall){
 }
 
 /* ================= tile map ================= */
+function drawLive2d(c,W,H,ws){
+  c.lineJoin="round";c.lineCap="round";
+  if(trail.length>1){var tcol=(grp.on&&!S.gView&&grp.myColor)?grp.myColor:css("--gps");
+    c.beginPath();trail.forEach(function(q,k){var x=W/2+(q[2]-MV.u)*ws,y=H/2+(q[3]-MV.v)*ws;k?c.lineTo(x,y):c.moveTo(x,y)});
+    c.strokeStyle=css("--surface");c.globalAlpha=.9;c.lineWidth=8.5;c.stroke();c.strokeStyle=tcol;c.globalAlpha=1;c.lineWidth=5;c.stroke()}
+  grp.friends.forEach(function(f){var tr=grp.trails[f.id];if(!tr||tr.length<2)return;
+    c.beginPath();tr.forEach(function(q,k){var x=W/2+(q[0]-MV.u)*ws,y=H/2+(q[1]-MV.v)*ws;k?c.lineTo(x,y):c.moveTo(x,y)});
+    c.strokeStyle=css("--surface");c.globalAlpha=.85;c.lineWidth=7.5;c.stroke();c.strokeStyle=f.color;c.globalAlpha=f.stale?.5:1;c.lineWidth=4.5;c.stroke();c.globalAlpha=1});
+  if(RPON)rpOver2d(c,W,H,ws);
+  grp.friends.forEach(function(f){var fx=W/2+(f.u-MV.u)*ws,fy=H/2+(f.v-MV.v)*ws;if(fx<-30||fx>W+30||fy<-30||fy>H+30)return;friendMarker(c,fx,fy,f)});
+  if(gpsFix){var gx=W/2+(gpsFix.u-MV.u)*ws,gy=H/2+(gpsFix.v-MV.v)*ws,mg=40075016.686*Math.cos(gpsFix.lat*Math.PI/180)/ws;
+    c.beginPath();c.arc(gx,gy,Math.max(9,gpsFix.acc/mg),0,6.283);c.fillStyle=css("--gps");c.globalAlpha=.16;c.fill();c.globalAlpha=1;ownMarker(c,gx,gy)}
+  c.font="10px "+css("--font");c.textAlign="right";c.textBaseline="alphabetic";
+  var attr=attrText();if(attr){var tw=c.measureText(attr).width;c.fillStyle=css("--surface");c.globalAlpha=.8;c.fillRect(W-tw-12,H-17,tw+10,15);c.globalAlpha=1;c.fillStyle=css("--muted");c.fillText(attr,W-7,H-6)}
+}
+var DEMC=new Map(),GH=null;
+function demElev(lat,lon){var z=12,n=Math.pow(2,z),u=(lon+180)/360,v=merc(lat),x=Math.floor(u*n),y=Math.floor(v*n),url=demUrl(z,x,y),e=DEMC.get(url);
+  if(e===undefined){var im=getImg(url);if(!(im.complete&&im.naturalWidth))return null;
+    try{var cv=document.createElement("canvas");cv.width=cv.height=256;var g=cv.getContext("2d");g.drawImage(im,0,0,256,256);e=g.getImageData(0,0,256,256).data}catch(er){e=null}
+    DEMC.set(url,e);if(DEMC.size>12)DEMC.delete(DEMC.keys().next().value)}
+  if(!e)return 0;var px=Math.min(255,Math.floor((u*n-x)*256)),py=Math.min(255,Math.floor((v*n-y)*256)),k=(py*256+px)*4;
+  return e[k]*256+e[k+1]+e[k+2]/256-32768}
+function getGhost(){ // เส้นทางเปล่า (ไม่แสดงผล) ไว้ให้ 3D ทำงานเมื่อยังไม่มี GPX
+  var lat=merc2lat(MV.v),lon=MV.u*360-180,key=Math.round(MV.u*1024)+","+Math.round(MV.v*1024),e=demElev(lat,lon);
+  if(GH&&GH.key===key&&(GH.eset||e==null))return GH;
+  GH=build({name:"",pts:[[lat,lon,e||0],[lat+0.0002,lon+0.0002,e||0]]});GH.ghost=true;GH.key=key;GH.eset=e!=null;return GH}
 var MV={u:.5,v:.5,z:12,w:300,h:300};
 var tileCache=new Map();
 function tileUrl(z,x,y){return (S.tileUrl||DEF_TILE).replace("{z}",z).replace("{x}",x).replace("{y}",y)}
@@ -243,7 +270,7 @@ function getImg(u){
 }
 function getTile(z,x,y){return getImg(baseUrl(z,x,y))}
 function fitRoute(){
-  if(!route)return;
+  if(!route){if(gpsFix){MV.u=gpsFix.u;MV.v=gpsFix.v;MV.z=Math.max(MV.z,15)}return}
   var u0=1,u1=0,v0=1,v1=0,i,cv=$("map");
   if(cv.clientWidth>0){MV.w=cv.clientWidth;MV.h=cv.clientHeight}
   for(i=0;i<=route.n;i+=3){var u=route.mu[i],v=route.mv[i];if(u<u0)u0=u;if(u>u1)u1=u;if(v<v0)v0=v;if(v>v1)v1=v}
@@ -257,7 +284,7 @@ function zoomAt(px,py,dz){
   MV.u=wu-(px-MV.w/2)/nws;MV.v=clamp(wv-(py-MV.h/2)/nws,0,1);
 }
 function setFollow(on){follow=on;$("zFollow").setAttribute("aria-pressed",on?"true":"false");if(on)centerRunner()}
-function centerRunner(){if(!route)return;var i=idxAt(runnerKm());if(gpsFix){MV.u=gpsFix.u;MV.v=gpsFix.v}else{MV.u=route.mu[i];MV.v=route.mv[i]}if(MV.z<14)MV.z=14.5;reqDraw()}
+function centerRunner(){if(!route){if(gpsFix){MV.u=gpsFix.u;MV.v=gpsFix.v;if(MV.z<14)MV.z=15}reqDraw();return}var i=idxAt(runnerKm());if(gpsFix){MV.u=gpsFix.u;MV.v=gpsFix.v}else{MV.u=route.mu[i];MV.v=route.mv[i]}if(MV.z<14)MV.z=14.5;reqDraw()}
 
 function drawMap0(){
   var cv=$("map");if(cv.offsetParent===null)return;
@@ -274,7 +301,7 @@ function drawMap0(){
       if(im.complete&&im.naturalWidth)c.drawImage(im,W/2+(tx*256-cx)*sc,H/2+(ty*256-cy)*sc,T+.5,T+.5);
     }
   }
-  if(!route){return}
+  if(!route){drawLive2d(c,W,H,ws);return}
   var X=function(i){return W/2+(route.mu[i]-MV.u)*ws},Y=function(i){return H/2+(route.mv[i]-MV.v)*ws},i;
   c.lineJoin="round";c.lineCap="round";
   // เส้นขอบ
@@ -599,7 +626,7 @@ function draw3d0(){
     if(pw<=0)return null;return [(px/pw*0.5+0.5)*W,(1-(py/pw*0.5+0.5))*H]};
   var rp=function(k){return proj((route.mu[k]-G.u0)*G.mpu,-(route.mv[k]-G.v0)*G.mpu,zOf(k))};
   c.font="600 12px "+css("--mono");c.textBaseline="middle";c.lineJoin="round";
-  cps.forEach(function(cp){var p=rp(idxAt(Math.min(cp.km,route.total/1000)));if(!p)return;
+  if(!route.ghost)cps.forEach(function(cp){var p=rp(idxAt(Math.min(cp.km,route.total/1000)));if(!p)return;
     c.beginPath();c.arc(p[0],p[1],6,0,6.283);c.fillStyle=css("--surface");c.fill();c.lineWidth=2.5;c.strokeStyle=css("--ink");c.stroke();
     var right=p[0]>W-80;c.textAlign=right?"right":"left";var tx3=p[0]+(right?-11:11);
     c.lineWidth=3;c.strokeStyle=css("--surface");c.strokeText(cp.name,tx3,p[1]-11);c.fillStyle=css("--ink");c.fillText(cp.name,tx3,p[1]-11)});
@@ -613,7 +640,7 @@ function draw3d0(){
     path();c.strokeStyle=col;c.globalAlpha=alpha;c.lineWidth=5.5;c.stroke();c.globalAlpha=1};
   grp.friends.forEach(function(f){var tr=grp.trails[f.id];if(tr&&tr.length>1)strokeLine3(tr,f.color,f.stale?.5:1)});
   if(trail.length>1){var tr3=trail.map(function(q){return [q[2],q[3],q[4]]});strokeLine3(tr3,(grp.on&&!S.gView&&grp.myColor)?grp.myColor:css("--gps"),1)}
-  var s0=rp(0);if(s0){c.beginPath();c.arc(s0[0],s0[1],5,0,6.283);c.fillStyle=css("--ok");c.fill();c.lineWidth=2;c.strokeStyle=css("--surface");c.stroke()}
+  var s0=route.ghost?null:rp(0);if(s0){c.beginPath();c.arc(s0[0],s0[1],5,0,6.283);c.fillStyle=css("--ok");c.fill();c.lineWidth=2;c.strokeStyle=css("--surface");c.stroke()}
   var rr=rp(ri);
   if(gpsFix){
     var gz=zOf(clamp(gpsFix.ni!=null?gpsFix.ni:ri,0,route.n)),gp=proj((gpsFix.u-G.u0)*G.mpu,-(gpsFix.v-G.v0)*G.mpu,gz);
@@ -627,8 +654,8 @@ function draw3d0(){
       ownMarker(c,gp[0],gp[1]);
     }
   }
-  if(rr){c.beginPath();c.arc(rr[0],rr[1],(RPON?.01:13),0,6.283);c.fillStyle=css("--accent");c.globalAlpha=.25;c.fill();c.globalAlpha=1;
-    if(gpsFix){c.beginPath();c.arc(rr[0],rr[1],7,0,6.283);c.fillStyle=css("--accent");c.fill();c.lineWidth=2.5;c.strokeStyle=css("--surface");c.stroke()}else ownMarker(c,rr[0],rr[1])}
+  if(rr){c.beginPath();c.arc(rr[0],rr[1],(RPON||route.ghost?.01:13),0,6.283);c.fillStyle=css("--accent");c.globalAlpha=.25;c.fill();c.globalAlpha=1;
+    if(route.ghost){}else if(gpsFix){c.beginPath();c.arc(rr[0],rr[1],7,0,6.283);c.fillStyle=css("--accent");c.fill();c.lineWidth=2.5;c.strokeStyle=css("--surface");c.stroke()}else if(!route.ghost)ownMarker(c,rr[0],rr[1])}
   grp.friends.forEach(function(f){
     var fp=proj((f.u-G.u0)*G.mpu,-(f.v-G.v0)*G.mpu,zOf(clamp(f.ni||0,0,route.n)));if(fp)friendMarker(c,fp[0],fp[1],f)});
   if(RPON)rpOver3d(c,W,H,proj,zOf);
@@ -956,7 +983,15 @@ function showOff(){
   el.textContent="ออกนอกเส้นทาง "+Math.round(gpsFix.off)+" ม. · ทางกลับอยู่ทาง "+dirTxt(gpsFix.lat,gpsFix.lon,gpsFix.ni)+" (เส้นทาง กม. "+(gpsFix.ni*route.step/1000).toFixed(1)+")";
 }
 function onFix(p){
-  if(!route)return;
+  if(!route){
+    var la0=p.coords.latitude,lo0=p.coords.longitude,ac0=p.coords.accuracy||0,m0=$("gpsMsg");
+    if(!gpsFix)setFollow(true);
+    gpsFix={lat:la0,lon:lo0,acc:ac0,t:Date.now(),u:(lo0+180)/360,v:merc(la0),off:0,ni:null};offRoute=false;
+    var l0=trail[trail.length-1];
+    if(!l0||hav(l0[0],l0[1],la0,lo0)>Math.max(8,ac0)){trail.push([la0,lo0,gpsFix.u,gpsFix.v,null]);if(trail.length>4000)trail.splice(0,1000);if(trail.length-trailSaved>=15){trailSaved=trail.length;saveTrail()}}
+    LS.set("tcc.lastpos",JSON.stringify([gpsFix.u,gpsFix.v]));
+    m0.className="msg";m0.textContent="จับสัญญาณแล้ว ±"+Math.round(ac0)+" ม. (ยังไม่มีเส้นทาง แสดงตำแหน่งบนแผนที่)";
+    $("offLine").hidden=true;setTimeout(histRec,0);if(follow)centerRunner();reqDraw();if(grp.on)renderGroup();return}
   var lat=p.coords.latitude,lon=p.coords.longitude,acc=p.coords.accuracy||0,t=Date.now(),m=$("gpsMsg");
   var thr=Math.max(S.offDist,acc),res=null,tgt;
   if(gpsKm==null){
@@ -1009,7 +1044,6 @@ $("gpsBtn").onclick=function(){
   var b=$("gpsBtn"),m=$("gpsMsg");
   if(gpsWatch!=null){navigator.geolocation.clearWatch(gpsWatch);stopGps("ปิดแล้ว",false);return}
   if(!navigator.geolocation){m.className="msg err";m.textContent="อุปกรณ์นี้ไม่รองรับ GPS ในเบราว์เซอร์";return}
-  if(!route){m.className="msg err";m.textContent="อัปโหลด GPX ก่อน";return}
   m.className="msg";m.textContent="กำลังหาสัญญาณ...";b.setAttribute("aria-pressed","true");
   try{
     gpsWatch=navigator.geolocation.watchPosition(onFix,function(err){
@@ -1311,13 +1345,13 @@ function hqLoad(){try{var o=JSON.parse(LS.get("tcc.hq")||"null");if(o&&o.room&&A
 function hqSave(){LS.set("tcc.hq",JSON.stringify({room:HQ.room,pts:HQ.pts.slice(-3000)}))}
 hqLoad();
 function histRec(){
-  if(!grp.on||S.gView||!S.gShare||!gpsFix||!route)return;
+  if(!grp.on||S.gView||!S.gShare||!gpsFix)return;
   if(HQ.room!==grp.room){HQ.room=grp.room;HQ.pts=[];HQ.last=null}
   var f=gpsFix,L=HQ.last;
   if(f.acc>80)return; // สัญญาณหยาบเกินไปไม่เก็บ
   if(L){var dtS=(f.t-L[0])/1000,dm=Math.hypot((f.lat-L[1])*111320,(f.lon-L[2])*111320*Math.cos(f.lat*Math.PI/180));
     if(!(dtS>=30&&dm>=6)&&dm<20&&dtS<120)return; if(dtS<5)return}
-  var p=[f.t,Math.round(f.lat*1e5)/1e5,Math.round(f.lon*1e5)/1e5,(!route.sample&&gpsKm!=null)?Math.round(gpsKm*100)/100:null];
+  var p=[f.t,Math.round(f.lat*1e5)/1e5,Math.round(f.lon*1e5)/1e5,(route&&!route.sample&&gpsKm!=null)?Math.round(gpsKm*100)/100:null];
   HQ.pts.push(p);HQ.last=p;hqSave();
 }
 function hqEnc(pts){ // ชุดจุด -> สตริงสั้น: t0|lat0,lon0|dt,dla,dlo,km;...
@@ -1476,6 +1510,7 @@ function rpOpen(mode){
   $("rpFull").hidden=false;$("rpTitle").textContent=RP.mode==="gpx"?"เล่นย้อนหลังจากไฟล์ GPX":"เล่นย้อนหลัง · กลุ่ม "+grp.room;
   RP.data=[];setFollow(false);rpDraw();setTimeout(function(){rpFit()},60);if(RP.mode==="fb")rpLoad();else{$("rpMsg").className="msg";$("rpMsg").textContent="เลือกไฟล์ GPX ที่มีเวลา (เลือกได้หลายไฟล์ = หลายคน)";$("rpFile").click()}}
 function rpClose(){
+  RP.fol=-1;RP.spin=false;$("rpLock").textContent="🎯 ไม่ล็อก";$("rpSpin").classList.remove("primary");
   if(RP.rec)rpRecStop(false);rpPlay(false);RP.open=false;RPON=false;$("rpFull").hidden=true;
   if(RP.ph&&RP.ph.parentNode){RP.ph.parentNode.insertBefore($("mapbox"),RP.ph);RP.ph.parentNode.removeChild(RP.ph)}
   if(RP.tmpRoute){RP.tmpRoute=false;setRoute(null,false)}
@@ -1515,6 +1550,17 @@ function rpRecStart(){
 function rpRecStop(save){var r=RP.rec;if(!r)return;r.save=save!==false;RPREC=null;try{r.mr.stop()}catch(e){RP.rec=null}}
 $("rpRec").onclick=function(){RP.rec?rpRecStop(true):rpRecStart()};
 $("gReplay").onclick=function(){rpOpen("fb")};$("rpImport").onclick=function(){rpOpen("gpx")};$("rpPick").onclick=function(){$("rpFile").click()};$("rpFile").onchange=function(e){if(e.target.files&&e.target.files.length)rpImportFiles(e.target.files);e.target.value=""};
+RP.fol=-1;RP.spin=false;
+function rpAnim(ts){if(!RP.open||(!RP.spin&&RP.fol<0)){RP.anim=0;return}
+  var dt=RP.al?Math.min(100,ts-RP.al):16;RP.al=ts;
+  if(RP.spin&&mode3d)cam.b=(cam.b+dt*0.012)%360;
+  if(RP.fol>=0&&RP.data.length){var x=RP.cs.filter(function(q){return q.d===RP.data[RP.fol]})[0];if(x){MV.u=(x.cur.lon+180)/360;MV.v=merc(x.cur.lat)}}
+  reqDraw();RP.anim=requestAnimationFrame(rpAnim)}
+function rpAnimOn(){if(!RP.anim){RP.al=0;RP.anim=requestAnimationFrame(rpAnim)}}
+$("rpLock").onclick=function(){if(!RP.data.length)return;RP.fol++;if(RP.fol>=RP.data.length)RP.fol=-1;
+  $("rpLock").textContent=RP.fol<0?"🎯 ไม่ล็อก":"🎯 "+RP.data[RP.fol].name;
+  if(RP.fol>=0&&MV.z<14.5)MV.z=15.5;rpAnimOn();reqDraw()};
+$("rpSpin").onclick=function(){RP.spin=!RP.spin;$("rpSpin").classList.toggle("primary",RP.spin);if(RP.spin&&!mode3d)$("rpMsg").textContent="หมุนอัตโนมัติใช้ได้ในโหมด 3D (กดปุ่ม 3D บนแผนที่)";rpAnimOn()};
 $("rpFs").onclick=function(){var o=$("rpFull"),on=!o.classList.contains("rp-fs");o.classList.toggle("rp-fs",on);$("rpFs").textContent=on?"✕ ย่อ":"⛶ เต็มจอ";
   try{if(on&&o.requestFullscreen)o.requestFullscreen().catch(function(){});else if(!on&&document.fullscreenElement)document.exitFullscreen()}catch(e){}
   setTimeout(function(){reqDraw()},120)};
@@ -1699,6 +1745,7 @@ loadTrail();renderCps();renderLegend();filterBtns();
 if(!route){$("gpxMsg").textContent="ยังไม่มีเส้นทาง เลือกไฟล์ GPX หรือโหลดจากกลุ่ม"}
 else{$("gpxMsg").textContent=(route.name?route.name+" · ":"")+(route.total/1000).toFixed(1)+" กม. โหลดจากที่บันทึกไว้ในเครื่อง"}
 var _r=route;route=null;setRoute(_r,false);
+if(!route){var lp=null;try{lp=JSON.parse(LS.get("tcc.lastpos")||"null")}catch(e){}if(lp&&lp.length===2){MV.u=lp[0];MV.v=lp[1];MV.z=14}else{MV.u=(100.5+180)/360;MV.v=merc(13.75);MV.z=8}}
 lastKm=runnerKm();
 window.addEventListener("resize",function(){drawAll()});
 try{window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change",function(){drawAll()})}catch(e){}
